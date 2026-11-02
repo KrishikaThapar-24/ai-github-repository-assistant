@@ -15,7 +15,7 @@ Production configuration requires all of these values in the host's secret manag
 - `DEV_ASSISTANT_ENVIRONMENT=production`
 - `DEV_ASSISTANT_API_ACCESS_TOKEN`
 - `DEV_ASSISTANT_DEMO_ACCESS_PASSWORD`
-- The provider key selected by `DEV_ASSISTANT_LLM_PROVIDER`
+- The provider key selected by `DEV_ASSISTANT_LLM_PROVIDER` (for example, `DEV_ASSISTANT_OPENAI_API_KEY`)
 
 Keep the API token and provider key on the backend. Keep the demo password private. The password gate limits who can use the shared demo, but this project does not yet implement per-user quotas or a hard model-spend limit. Do not share the public demo password broadly while using a personal API key.
 

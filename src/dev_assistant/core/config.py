@@ -53,6 +53,13 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production requires API access token and demo access password."
                 )
+            provider_key = (
+                self.openai_api_key
+                if self.llm_provider == "openai"
+                else self.anthropic_api_key
+            )
+            if provider_key is None:
+                raise ValueError(f"Production requires an API key for {self.llm_provider}.")
         return self
 
 

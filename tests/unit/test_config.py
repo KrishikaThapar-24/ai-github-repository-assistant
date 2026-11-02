@@ -35,6 +35,7 @@ def test_production_requires_api_and_demo_credentials() -> None:
         environment="production",
         api_access_token="server-token",
         demo_access_password="demo-password",
+        openai_api_key="test-key",
         _env_file=None,
     )
     assert settings.api_access_token.get_secret_value() == "server-token"
