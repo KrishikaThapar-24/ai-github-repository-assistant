@@ -44,8 +44,13 @@ jobs:
       - name: Verify lockfile
         run: uv lock --check
 
+      - name: Check Streamlit syntax
+        run: uv run python -m py_compile apps/web/streamlit_app.py
+
       - name: Check extension JavaScript
         run: |
+          node --check apps/extension/github_context.js
+          node --check apps/extension/service_worker.js
           node --check apps/extension/sidepanel.js
           node --check apps/extension/snapshot_storage.js
 
