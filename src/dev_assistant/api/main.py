@@ -1,7 +1,10 @@
 """FastAPI application entry point."""
 
+import hmac
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from dev_assistant.api.routes import router
 from dev_assistant.core.config import get_settings
@@ -15,9 +18,28 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8501", "http://127.0.0.1:8501", *extension_origins],
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(router)
+
+
+@app.middleware("http")
+async def require_api_access_token(request, call_next):
+    """Protect API routes when a deployment configures a shared server-side token."""
+
+    token = settings.api_access_token
+    if request.url.path.startswith("/api/v1/") and request.method != "OPTIONS" and token:
+        scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
+        expected = token.get_secret_value()
+        if scheme.lower() != "bearer" or not hmac.compare_digest(
+            supplied.encode("utf-8"), expected.encode("utf-8")
+        ):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "A valid bearer token is required."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    return await call_next(request)
 
 
 @app.get("/health", tags=["operations"])

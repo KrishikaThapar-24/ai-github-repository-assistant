@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import os
 import time
 
@@ -9,8 +10,31 @@ import httpx
 import streamlit as st
 
 API_URL = os.getenv("DEV_ASSISTANT_API_URL", "http://127.0.0.1:8001").rstrip("/")
+API_TOKEN = os.getenv("DEV_ASSISTANT_API_ACCESS_TOKEN", "")
+DEMO_PASSWORD = os.getenv("DEV_ASSISTANT_DEMO_ACCESS_PASSWORD", "")
+IS_LOCAL_API = API_URL.startswith(("http://127.0.0.1", "http://localhost"))
+API_HEADERS = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 
 st.set_page_config(page_title="AI GitHub Repository Assistant", page_icon="⌘", layout="wide")
+
+if not IS_LOCAL_API:
+    if not API_TOKEN or not DEMO_PASSWORD:
+        st.error("The hosted demo is not configured with its access credentials.")
+        st.stop()
+    if not st.session_state.get("demo_authenticated"):
+        st.title("AI GitHub Repository Assistant")
+        st.caption("This demo is password protected to prevent unauthorized API usage.")
+        password = st.text_input("Demo password", type="password")
+        if st.button("Unlock demo", type="primary"):
+            st.session_state["demo_authenticated"] = hmac.compare_digest(
+                password.encode("utf-8"), DEMO_PASSWORD.encode("utf-8")
+            )
+            if not st.session_state["demo_authenticated"]:
+                st.error("That password did not match.")
+            else:
+                st.rerun()
+        st.stop()
+
 st.title("AI GitHub Repository Assistant")
 st.caption("Connect a repository, index a pinned snapshot, and ask evidence-backed questions.")
 
@@ -22,6 +46,7 @@ with st.sidebar:
         try:
             response = httpx.post(
                 f"{API_URL}/api/v1/repositories/connect",
+                headers=API_HEADERS,
                 json={"repository_id": repository_id.strip(), "ref": ref.strip() or "HEAD"},
                 timeout=15,
             )
@@ -35,7 +60,11 @@ with st.sidebar:
     job_id = st.session_state.get("index_job_id")
     if job_id:
         try:
-            job_response = httpx.get(f"{API_URL}/api/v1/repositories/jobs/{job_id}", timeout=10)
+            job_response = httpx.get(
+                f"{API_URL}/api/v1/repositories/jobs/{job_id}",
+                headers=API_HEADERS,
+                timeout=10,
+            )
             job_response.raise_for_status()
             job = job_response.json()
             if job["status"] == "succeeded":
@@ -64,6 +93,7 @@ if st.button(
     try:
         response = httpx.post(
             f"{API_URL}/api/v1/assistant/search",
+            headers=API_HEADERS,
             json={
                 "repository_id": st.session_state["repository_id"],
                 "commit_sha": st.session_state["commit_sha"],
@@ -108,6 +138,7 @@ if st.button("Ask", disabled=not st.session_state.get("repository_id")):
             try:
                 response = httpx.post(
                     f"{API_URL}/api/v1/assistant/ask",
+                    headers=API_HEADERS,
                     json={
                         "repository_id": repo_id,
                         "commit_sha": commit_sha or "activity-only",
@@ -137,6 +168,7 @@ if st.button("Review pull request", disabled=not st.session_state.get("repositor
         try:
             response = httpx.post(
                 f"{API_URL}/api/v1/assistant/review",
+                headers=API_HEADERS,
                 json={
                     "repository_id": st.session_state["repository_id"],
                     "pull_request_number": int(pull_request_number),
@@ -173,6 +205,7 @@ if st.button(
         try:
             response = httpx.post(
                 f"{API_URL}/api/v1/assistant/investigate-issue",
+                headers=API_HEADERS,
                 json={
                     "repository_id": st.session_state["repository_id"],
                     "commit_sha": st.session_state["commit_sha"],

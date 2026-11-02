@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = Field(default=1200, ge=128, le=4096)
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
+    api_access_token: SecretStr | None = None
+    demo_access_password: SecretStr | None = None
     github_token: SecretStr | None = None
     github_api_url: str = "https://api.github.com"
     github_activity_backend: Literal["rest", "mcp"] = "rest"
@@ -43,6 +45,15 @@ class Settings(BaseSettings):
     chroma_persist_directory: Path = Path("data/chroma")
     lexical_database_path: Path = Path("data/code-search.sqlite3")
     dependency_database_path: Path = Path("data/dependencies.sqlite3")
+
+    @model_validator(mode="after")
+    def require_demo_credentials_in_production(self) -> "Settings":
+        if self.environment == "production":
+            if self.api_access_token is None or self.demo_access_password is None:
+                raise ValueError(
+                    "Production requires API access token and demo access password."
+                )
+        return self
 
 
 @lru_cache
