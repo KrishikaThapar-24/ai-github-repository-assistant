@@ -192,7 +192,14 @@ class CodeQAGraph:
             value for value in [question, state.get("retrieval_hint", ""), *quoted] if value
         )
         activity_kind = latest_activity_kind(question)
-        is_architecture_question = bool(
+        is_request_flow_question = bool(
+            re.search(
+                r"\b(api|request|routes?|endpoints?|flows?|pipeline|reaches|handled|entry points?)\b",
+                question,
+                re.IGNORECASE,
+            )
+        )
+        is_architecture_question = is_request_flow_question or bool(
             re.search(
                 r"\b(architecture|dependenc(?:y|ies)|depend(?:s|ing)? on|imports?|imported|project structure|service interactions|call graph|calls?)\b",
                 question,
@@ -224,7 +231,15 @@ class CodeQAGraph:
             else "code"
         )
         retrieval_queries = [retrieval_query]
-        if is_architecture_question:
+        if is_request_flow_question:
+            retrieval_queries.extend(
+                [
+                    "src/dev_assistant/api/routes.py ask_assistant /assistant/ask code question handler",
+                    "src/dev_assistant/agents/graphs/code_qa.py CodeQAGraph ask plan retrieve answer verify",
+                    "src/dev_assistant/agents/answering.py LangChainAnswerer prompt evidence citations",
+                ]
+            )
+        elif is_architecture_question:
             retrieval_queries.extend(
                 [
                     "repository entry points application startup configuration",
@@ -265,12 +280,16 @@ class CodeQAGraph:
             if is_bug_investigation
             else evidence_limit
         )
+        results_per_query = min(
+            self.top_k,
+            max(1, (semantic_limit + len(queries) - 1) // len(queries)),
+        )
         for query in queries:
             results = self.search.search(
                 state["repository_id"],
                 state["commit_sha"],
                 query,
-                top_k=min(self.top_k, 4) if len(queries) > 1 else self.top_k,
+                top_k=results_per_query,
                 path=state.get("path"),
             )
             for result in results:
@@ -406,10 +425,13 @@ class CodeQAGraph:
                 answer,
             )
         if not valid:
-            answer = f"{answer.rstrip()}\n\nSources: " + ", ".join(
-                f"[{key}]" for key in citation_by_id
-            )
-            valid = set(citation_by_id)
+            return {
+                "answer": (
+                    "I couldn't verify an answer from the retrieved source citations. "
+                    "Try asking about a specific file, symbol, or step in the flow."
+                ),
+                "citations": [],
+            }
         return {
             "answer": answer,
             "citations": [

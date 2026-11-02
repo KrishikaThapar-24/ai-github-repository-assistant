@@ -1,6 +1,7 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import make_dataclass
-from threading import Event
+from threading import Barrier, Event
 from types import SimpleNamespace
 
 import pytest
@@ -165,6 +166,49 @@ def test_repository_ingestion_uses_the_cached_search_service(monkeypatch) -> Non
 
     assert result["chunk_count"] == 3
     assert result["commit_sha"] == "deadbeef123"
+
+
+def test_concurrent_first_requests_initialize_search_and_graph_once(monkeypatch) -> None:
+    from dev_assistant.agents import factory
+
+    search_service = object()
+    qa_graph = object()
+    initialization_started = Event()
+    release_initialization = Event()
+    simultaneous_start = Barrier(9)
+    search_creations = []
+    graph_creations = []
+
+    def create_search_service(settings):
+        search_creations.append(settings)
+        initialization_started.set()
+        assert release_initialization.wait(timeout=2)
+        return search_service
+
+    def create_code_qa_graph(settings, *, search_service):
+        graph_creations.append((settings, search_service))
+        return qa_graph
+
+    monkeypatch.setattr(factory, "create_search_service", create_search_service)
+    monkeypatch.setattr(factory, "create_code_qa_graph", create_code_qa_graph)
+    monkeypatch.setattr(routes, "_code_search_service_instance", None)
+    monkeypatch.setattr(routes, "_qa_graph_instance", None)
+
+    def get_graph_after_barrier():
+        simultaneous_start.wait(timeout=2)
+        return routes._qa_graph()
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(get_graph_after_barrier) for _ in range(8)]
+        simultaneous_start.wait(timeout=2)
+        assert initialization_started.wait(timeout=2)
+        release_initialization.set()
+        results = [future.result(timeout=3) for future in futures]
+
+    assert all(result is qa_graph for result in results)
+    assert len(search_creations) == 1
+    assert len(graph_creations) == 1
+    assert graph_creations[0][1] is search_service
 
 
 def test_search_endpoint_returns_ranked_source_locations(monkeypatch) -> None:

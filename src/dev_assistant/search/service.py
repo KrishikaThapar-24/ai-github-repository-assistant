@@ -11,6 +11,11 @@ from dev_assistant.search.lexical_index import SQLiteLexicalIndex
 from dev_assistant.search.models import SearchResult
 from dev_assistant.search.vector_store import ChromaCodeStore
 
+_FILE_REFERENCE = re.compile(
+    r"(?:[\w.-]+/)*[\w.-]+\.(?:py|pyi|js|jsx|ts|tsx|java|go|rs|rb|php|cs|cpp|c|h|sql|md|json|ya?ml|toml)",
+    re.IGNORECASE,
+)
+
 
 class CodeSearchService:
     def __init__(
@@ -23,7 +28,13 @@ class CodeSearchService:
     def index(self, chunks: list[CodeChunk], *, batch_size: int = 128) -> int:
         for start in range(0, len(chunks), batch_size):
             batch = chunks[start : start + batch_size]
-            vectors = self.embeddings.embed_documents([chunk.content for chunk in batch])
+            searchable_texts = [
+                f"Repository path: {chunk.path}\n"
+                f"Symbol: {chunk.symbol_kind} {chunk.symbol_name}\n\n"
+                f"{chunk.content}"
+                for chunk in batch
+            ]
+            vectors = self.embeddings.embed_documents(searchable_texts)
             self.vectors.upsert(batch, vectors)
             self.lexical.upsert(batch)
         return len(chunks)
@@ -55,11 +66,20 @@ class CodeSearchService:
                 (previous[1] if previous else 0.0) + 1.0 / (60 + rank),
             )
         query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
+        requested_files = {
+            match.group(0).replace("\\", "/").casefold() for match in _FILE_REFERENCE.finditer(query)
+        }
         boosted = []
         for result, score in fused.values():
             symbol_terms = set(re.findall(r"[a-z0-9]+", result.symbol_name.lower()))
             if symbol_terms and symbol_terms <= query_terms:
                 score += 0.05
+            result_path = result.path.replace("\\", "/").casefold()
+            if any(
+                result_path == requested_file or result_path.endswith(f"/{requested_file}")
+                for requested_file in requested_files
+            ):
+                score += 0.15
             boosted.append((result, score))
         ordered = sorted(boosted, key=lambda item: item[1], reverse=True)
         return [replace(result, score=score) for result, score in ordered[:top_k]]

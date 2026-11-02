@@ -1,5 +1,6 @@
 import hashlib
 import re
+import sqlite3
 from pathlib import Path
 
 from dev_assistant.ingestion.models import CodeChunk
@@ -112,3 +113,78 @@ def test_search_can_scope_to_a_file_and_reopen_persistent_indexes(tmp_path: Path
     results = reopened.search("acme/demo", "sha", "token", path="b.py")
 
     assert [result.path for result in results] == ["b.py"]
+
+
+def test_filename_terms_rank_the_implementation_over_a_related_test(tmp_path: Path) -> None:
+    service = CodeSearchService(
+        TinyEmbeddings(),
+        ChromaCodeStore(tmp_path / "chroma"),
+        SQLiteLexicalIndex(tmp_path / "search.sqlite3"),
+    )
+    service.index(
+        [
+            make_chunk(
+                "acme/assistant",
+                "sha",
+                "apps/extension/sidepanel.js",
+                "submitQuestion",
+                "async function submitQuestion() { return sendRequest(); }",
+            ),
+            make_chunk(
+                "acme/assistant",
+                "sha",
+                "apps/extension/sidepanel.test.mjs",
+                "questionFormTest",
+                "test the sidepanel.js question form request handler",
+            ),
+        ]
+    )
+
+    results = service.search(
+        "acme/assistant", "sha", "apps/extension/sidepanel.js", top_k=2
+    )
+
+    assert results[0].path == "apps/extension/sidepanel.js"
+
+
+def test_lexical_index_migrates_existing_rows_to_searchable_metadata(tmp_path: Path) -> None:
+    database_path = tmp_path / "legacy.sqlite3"
+    chunk = make_chunk(
+        "acme/assistant",
+        "sha",
+        "src/repository_map.py",
+        "build_repository_map",
+        "return module_graph",
+    )
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """CREATE VIRTUAL TABLE code_chunks_fts USING fts5(
+                   content, chunk_id UNINDEXED, repository_id UNINDEXED, commit_sha UNINDEXED,
+                   path UNINDEXED, language UNINDEXED, start_line UNINDEXED, end_line UNINDEXED,
+                   symbol_name UNINDEXED, symbol_kind UNINDEXED, tokenize='unicode61'
+               )"""
+        )
+        connection.execute(
+            """INSERT INTO code_chunks_fts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                chunk.content,
+                chunk.chunk_id,
+                chunk.repository_id,
+                chunk.commit_sha,
+                chunk.path,
+                chunk.language,
+                chunk.start_line,
+                chunk.end_line,
+                chunk.symbol_name,
+                chunk.symbol_kind,
+            ),
+        )
+
+    lexical = SQLiteLexicalIndex(database_path)
+    results = lexical.search("acme/assistant", "sha", "repository_map.py")
+
+    assert [result.path for result in results] == ["src/repository_map.py"]
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='code_chunks_fts'"
+        ).fetchone() is None

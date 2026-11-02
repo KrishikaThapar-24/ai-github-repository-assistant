@@ -88,15 +88,101 @@ def test_langgraph_answers_from_retrieved_code_with_verified_source(tmp_path: Pa
     assert answerer.calls == 1
 
 
-def test_graph_adds_sources_when_model_omits_citation(tmp_path: Path) -> None:
+def test_graph_rejects_model_answer_when_it_omits_citations(tmp_path: Path) -> None:
     search = build_service(tmp_path)
     search.index([sample_chunk()])
     graph = CodeQAGraph(search, FixedAnswerer("It delegates to a payment processor."))
 
     response = graph.ask("acme/payments", "sha-123", "Explain capture_payment")
 
-    assert "Sources: [S1]" in response.answer
-    assert response.citations[0].path == "billing/charge.py"
+    assert "couldn't verify an answer" in response.answer
+    assert response.citations == ()
+
+
+def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
+    chunks_by_path = {
+        "README.md": SearchResult(
+            "readme-flow",
+            "acme/assistant",
+            "sha-flow",
+            "README.md",
+            "markdown",
+            "The assistant uses a FastAPI backend and LangGraph.",
+            1,
+            3,
+            "",
+            "",
+            0.9,
+        ),
+        "src/dev_assistant/api/routes.py": SearchResult(
+            "route-flow",
+            "acme/assistant",
+            "sha-flow",
+            "src/dev_assistant/api/routes.py",
+            "python",
+            "def ask_assistant(...): return _qa_graph().ask(...)",
+            90,
+            115,
+            "ask_assistant",
+            "function",
+            0.9,
+        ),
+        "src/dev_assistant/agents/graphs/code_qa.py": SearchResult(
+            "graph-flow",
+            "acme/assistant",
+            "sha-flow",
+            "src/dev_assistant/agents/graphs/code_qa.py",
+            "python",
+            "The graph plans, retrieves evidence, answers, and verifies citations.",
+            100,
+            130,
+            "CodeQAGraph",
+            "class",
+            0.9,
+        ),
+        "src/dev_assistant/agents/answering.py": SearchResult(
+            "answer-flow",
+            "acme/assistant",
+            "sha-flow",
+            "src/dev_assistant/agents/answering.py",
+            "python",
+            "The answer chain formats sources and asks the model for a cited response.",
+            1,
+            24,
+            "LangChainAnswerer",
+            "class",
+            0.9,
+        ),
+    }
+
+    class RequestFlowSearch:
+        def __init__(self) -> None:
+            self.queries = []
+
+        def search(self, repository_id, commit_sha, query, *, top_k=8, path=None):
+            self.queries.append(query)
+            matching = [
+                chunk
+                for chunk_path, chunk in chunks_by_path.items()
+                if chunk_path in query or chunk_path == "README.md"
+            ]
+            return matching[:top_k]
+
+    search = RequestFlowSearch()
+    answerer = FixedAnswerer("The API route calls the graph [S3].")
+    graph = CodeQAGraph(search, answerer)
+
+    response = graph.ask(
+        "acme/assistant",
+        "sha-flow",
+        "Trace how a developer code question reaches LangGraph and gets answered with citations.",
+    )
+
+    evidence_paths = {item.path for item in answerer.seen_evidence}
+    assert "src/dev_assistant/api/routes.py" in evidence_paths
+    assert "src/dev_assistant/agents/graphs/code_qa.py" in evidence_paths
+    assert "src/dev_assistant/agents/answering.py" in evidence_paths
+    assert response.citations[0].path == "src/dev_assistant/agents/graphs/code_qa.py"
 
 
 def test_graph_returns_clear_no_evidence_answer_without_calling_model(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from functools import lru_cache
+from threading import RLock
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -40,6 +40,9 @@ from dev_assistant.worker.jobs import InMemoryJobRunner, JobQueueFullError
 
 router = APIRouter(prefix="/api/v1")
 jobs = InMemoryJobRunner()
+_service_initialization_lock = RLock()
+_code_search_service_instance: object | None = None
+_qa_graph_instance: object | None = None
 
 
 @router.get("/status", response_model=ServiceStatusResponse)
@@ -60,18 +63,32 @@ def get_service_status(settings: Settings = Depends(get_settings)) -> ServiceSta
     )
 
 
-@lru_cache(maxsize=1)
 def _code_search_service():
-    from dev_assistant.agents.factory import create_search_service
+    global _code_search_service_instance
+    if _code_search_service_instance is not None:
+        return _code_search_service_instance
 
-    return create_search_service(get_settings())
+    with _service_initialization_lock:
+        if _code_search_service_instance is None:
+            from dev_assistant.agents.factory import create_search_service
+
+            _code_search_service_instance = create_search_service(get_settings())
+    return _code_search_service_instance
 
 
-@lru_cache(maxsize=1)
 def _qa_graph():
-    from dev_assistant.agents.factory import create_code_qa_graph
+    global _qa_graph_instance
+    if _qa_graph_instance is not None:
+        return _qa_graph_instance
 
-    return create_code_qa_graph(get_settings(), search_service=_code_search_service())
+    with _service_initialization_lock:
+        if _qa_graph_instance is None:
+            from dev_assistant.agents.factory import create_code_qa_graph
+
+            _qa_graph_instance = create_code_qa_graph(
+                get_settings(), search_service=_code_search_service()
+            )
+    return _qa_graph_instance
 
 
 def _ingest_repository(repository_id: str, ref: str, settings: Settings) -> dict[str, object]:
