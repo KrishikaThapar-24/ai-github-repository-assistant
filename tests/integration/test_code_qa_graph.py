@@ -99,9 +99,9 @@ def test_graph_rejects_model_answer_when_it_omits_citations(tmp_path: Path) -> N
     assert response.citations == ()
 
 
-def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
-    chunks_by_path = {
-        "README.md": SearchResult(
+def test_request_flow_plan_retrieves_route_factory_graph_verifier_and_answerer_sources() -> None:
+    chunks = [
+        SearchResult(
             "readme-flow",
             "acme/assistant",
             "sha-flow",
@@ -114,7 +114,7 @@ def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
             "",
             0.9,
         ),
-        "src/dev_assistant/api/routes.py": SearchResult(
+        SearchResult(
             "route-flow",
             "acme/assistant",
             "sha-flow",
@@ -127,7 +127,7 @@ def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
             "function",
             0.9,
         ),
-        "src/dev_assistant/agents/graphs/code_qa.py": SearchResult(
+        SearchResult(
             "graph-flow",
             "acme/assistant",
             "sha-flow",
@@ -140,7 +140,7 @@ def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
             "class",
             0.9,
         ),
-        "src/dev_assistant/agents/answering.py": SearchResult(
+        SearchResult(
             "answer-flow",
             "acme/assistant",
             "sha-flow",
@@ -153,7 +153,33 @@ def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
             "class",
             0.9,
         ),
-    }
+        SearchResult(
+            "factory-flow",
+            "acme/assistant",
+            "sha-flow",
+            "src/dev_assistant/agents/factory.py",
+            "python",
+            "create_code_qa_graph wires LangChainAnswerer into CodeQAGraph.",
+            12,
+            24,
+            "create_code_qa_graph",
+            "function",
+            0.9,
+        ),
+        SearchResult(
+            "verify-flow",
+            "acme/assistant",
+            "sha-flow",
+            "src/dev_assistant/agents/graphs/code_qa.py",
+            "python",
+            "_verify maps supplied [S#] IDs to source citations and rejects uncited answers.",
+            350,
+            380,
+            "_verify",
+            "method",
+            0.9,
+        ),
+    ]
 
     class RequestFlowSearch:
         def __init__(self) -> None:
@@ -163,9 +189,10 @@ def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
             self.queries.append(query)
             matching = [
                 chunk
-                for chunk_path, chunk in chunks_by_path.items()
-                if chunk_path in query or chunk_path == "README.md"
+                for chunk in chunks
+                if chunk.path in query
             ]
+            matching.extend(chunk for chunk in chunks if chunk.path == "README.md")
             return matching[:top_k]
 
     search = RequestFlowSearch()
@@ -180,9 +207,13 @@ def test_request_flow_plan_retrieves_route_graph_and_answerer_sources() -> None:
 
     evidence_paths = {item.path for item in answerer.seen_evidence}
     assert "src/dev_assistant/api/routes.py" in evidence_paths
+    assert "src/dev_assistant/agents/factory.py" in evidence_paths
     assert "src/dev_assistant/agents/graphs/code_qa.py" in evidence_paths
     assert "src/dev_assistant/agents/answering.py" in evidence_paths
-    assert response.citations[0].path == "src/dev_assistant/agents/graphs/code_qa.py"
+    assert any(item.symbol_name == "_verify" for item in answerer.seen_evidence)
+    assert len(search.queries) >= 6
+    assert response.citations
+    assert response.citations[0].path in evidence_paths
 
 
 def test_graph_returns_clear_no_evidence_answer_without_calling_model(tmp_path: Path) -> None:

@@ -57,6 +57,7 @@ class AgentState(TypedDict, total=False):
     intent: str
     activity_kind: str
     workflow: str
+    request_flow: bool
     retrieval_queries: list[str]
     extra_evidence: list[dict[str, object]]
     evidence: list[dict[str, object]]
@@ -235,7 +236,9 @@ class CodeQAGraph:
             retrieval_queries.extend(
                 [
                     "src/dev_assistant/api/routes.py ask_assistant /assistant/ask code question handler",
-                    "src/dev_assistant/agents/graphs/code_qa.py CodeQAGraph ask plan retrieve answer verify",
+                    "src/dev_assistant/agents/factory.py create_code_qa_graph LangChainAnswerer graph wiring",
+                    "src/dev_assistant/agents/graphs/code_qa.py CodeQAGraph ask plan retrieve answer workflow",
+                    "src/dev_assistant/agents/graphs/code_qa.py _verify citations citation_id evidence validation",
                     "src/dev_assistant/agents/answering.py LangChainAnswerer prompt evidence citations",
                 ]
             )
@@ -258,6 +261,7 @@ class CodeQAGraph:
             "intent": intent,
             "activity_kind": activity_kind or "",
             "workflow": workflow,
+            "request_flow": is_request_flow_question,
         }
 
     @staticmethod
@@ -274,7 +278,9 @@ class CodeQAGraph:
         is_bug_investigation = state.get("workflow") == "bug_investigation"
         evidence_limit = self.top_k * (2 if is_architecture or is_bug_investigation else 1)
         semantic_limit = (
-            self.top_k
+            min(evidence_limit, max(self.top_k, len(queries) * 2))
+            if state.get("request_flow")
+            else self.top_k
             if is_architecture
             else max(1, self.top_k // 2)
             if is_bug_investigation
