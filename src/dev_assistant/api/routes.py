@@ -36,7 +36,7 @@ from dev_assistant.github.factory import (
     create_repository_source,
 )
 from dev_assistant.github.pull_request_diff import pull_request_diff_evidence
-from dev_assistant.worker.jobs import InMemoryJobRunner
+from dev_assistant.worker.jobs import InMemoryJobRunner, JobQueueFullError
 
 router = APIRouter(prefix="/api/v1")
 jobs = InMemoryJobRunner()
@@ -96,10 +96,17 @@ def connect_repository(
 ) -> JobResponse:
     """Start a read-only repository snapshot and indexing job."""
 
-    job = jobs.submit(
-        lambda: _ingest_repository(request.repository_id, request.ref, settings),
-        dedupe_key=(request.repository_id, request.ref),
-    )
+    try:
+        job = jobs.submit(
+            lambda: _ingest_repository(request.repository_id, request.ref, settings),
+            dedupe_key=(request.repository_id, request.ref),
+        )
+    except JobQueueFullError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
     return JobResponse(**asdict(job))
 
 

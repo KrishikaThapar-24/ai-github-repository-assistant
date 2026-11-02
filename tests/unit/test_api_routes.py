@@ -4,6 +4,7 @@ from threading import Event
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from dev_assistant.api import routes
@@ -81,6 +82,42 @@ def test_connect_repository_reuses_an_active_job_for_same_repository_and_ref(mon
 
     assert job.status == "succeeded"
     assert calls == [("acme/demo", "main")]
+
+
+def test_connect_repository_returns_retryable_error_when_job_queue_is_full(monkeypatch) -> None:
+    started = Event()
+    release = Event()
+    monkeypatch.setattr(
+        routes, "jobs", InMemoryJobRunner(max_workers=1, max_pending=1, max_history=1)
+    )
+
+    def slow_ingest(repository_id, ref, settings):
+        started.set()
+        release.wait(timeout=2)
+        return {"repository_id": repository_id, "ref": ref, "commit_sha": "deadbeef123"}
+
+    monkeypatch.setattr(routes, "_ingest_repository", slow_ingest)
+    first = routes.connect_repository(
+        ConnectRepositoryRequest(repository_id="acme/demo"), Settings()
+    )
+    assert started.wait(timeout=1)
+
+    try:
+        with pytest.raises(HTTPException) as error:
+            routes.connect_repository(
+                ConnectRepositoryRequest(repository_id="acme/other"), Settings()
+            )
+    finally:
+        release.set()
+
+    assert error.value.status_code == 429
+    assert error.value.headers["Retry-After"] == "5"
+    for _ in range(100):
+        job = routes.get_repository_job(first.job_id)
+        if job.status in {"succeeded", "failed"}:
+            break
+        time.sleep(0.01)
+    assert job.status == "succeeded"
 
 
 def test_service_status_reports_capabilities_without_exposing_credentials() -> None:

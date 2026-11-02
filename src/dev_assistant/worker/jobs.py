@@ -15,6 +15,10 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
+class JobQueueFullError(RuntimeError):
+    """Raised when the local worker has no capacity for another job."""
+
+
 @dataclass(frozen=True, slots=True)
 class JobStatus(Generic[T]):
     job_id: str
@@ -27,11 +31,21 @@ class JobStatus(Generic[T]):
 class InMemoryJobRunner:
     """Runs bounded background tasks; replace with a durable queue for deployment."""
 
-    def __init__(self, max_workers: int = 2) -> None:
+    def __init__(
+        self,
+        max_workers: int = 2,
+        *,
+        max_pending: int = 16,
+        max_history: int = 500,
+    ) -> None:
+        if max_workers < 1 or max_pending < 1 or max_history < max_pending:
+            raise ValueError("Worker and job history limits must be positive and consistent")
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="assistant")
         self._lock = threading.Lock()
         self._jobs: dict[str, JobStatus[object]] = {}
         self._active_jobs: dict[Hashable, str] = {}
+        self._max_pending = max_pending
+        self._max_history = max_history
 
     def submit(
         self, task: Callable[[], T], *, dedupe_key: Hashable | None = None
@@ -43,6 +57,15 @@ class InMemoryJobRunner:
                 if active_job is not None and active_job.status in {"queued", "running"}:
                     return cast(JobStatus[T], active_job)
 
+            active_count = sum(
+                job.status in {"queued", "running"} for job in self._jobs.values()
+            )
+            if active_count >= self._max_pending:
+                raise JobQueueFullError(
+                    "The indexing queue is full. Wait for an active job to finish, then retry."
+                )
+
+            self._prune_history()
             job_id = str(uuid.uuid4())
             created_at = datetime.now(UTC).isoformat()
             queued: JobStatus[T] = JobStatus(job_id, "queued", created_at)
@@ -51,6 +74,15 @@ class InMemoryJobRunner:
                 self._active_jobs[dedupe_key] = job_id
             self._executor.submit(self._run, job_id, created_at, task, dedupe_key)
         return queued
+
+    def _prune_history(self) -> None:
+        """Drop oldest completed statuses so local polling history stays bounded."""
+
+        for job_id, job in tuple(self._jobs.items()):
+            if len(self._jobs) < self._max_history:
+                break
+            if job.status in {"succeeded", "failed"}:
+                del self._jobs[job_id]
 
     def _run(
         self,
