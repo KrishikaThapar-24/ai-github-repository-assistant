@@ -120,7 +120,7 @@ async function readActivePage() {
 chrome.tabs.onActivated.addListener(() => readActivePage().catch(() => {}));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.url || changeInfo.status === "complete") {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, ([tab]) => {
       if (tab?.id === tabId) readActivePage().catch(() => {});
     });
   }

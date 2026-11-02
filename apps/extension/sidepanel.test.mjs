@@ -66,6 +66,8 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   const storedValues = new Map();
   const requests = [];
   let lastTabQuery = null;
+  let activeUrl = url;
+  let tabUpdatedListener = null;
   const previousGlobals = {
     chrome: globalThis.chrome,
     document: globalThis.document,
@@ -96,12 +98,21 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
       },
     },
     tabs: {
-      async query(query) {
+      query(query, callback) {
         lastTabQuery = query;
-        return [{ id: 17, url }];
+        const tabs = [{ id: 17, url: activeUrl }];
+        if (callback) {
+          callback(tabs);
+          return undefined;
+        }
+        return Promise.resolve(tabs);
       },
       onActivated: { addListener() {} },
-      onUpdated: { addListener() {} },
+      onUpdated: {
+        addListener(listener) {
+          tabUpdatedListener = listener;
+        },
+      },
     },
   };
   globalThis.fetch = async (requestUrl, options = {}) => {
@@ -153,6 +164,16 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
     storedValues,
     get lastTabQuery() {
       return lastTabQuery;
+    },
+    async updateActiveUrl(nextUrl, expectedContext) {
+      if (!tabUpdatedListener) throw new Error("The side panel did not register a tab update listener.");
+      activeUrl = nextUrl;
+      tabUpdatedListener(17, { url: nextUrl });
+      for (let attempt = 0; attempt < 500; attempt += 1) {
+        if (elements.get("#repository-context").textContent === expectedContext) return;
+        await new Promise((resolve) => setTimeout(resolve, 2));
+      }
+      throw new Error("The side panel did not update its GitHub page context.");
     },
     restore() {
       globalThis.chrome = previousGlobals.chrome;
@@ -374,6 +395,28 @@ test("uses the toolbar-click tab context when Chrome hides the tab URL", async (
     assert.equal(panel.elements.get("#ref-input").value, "main");
 
     assert.deepEqual(panel.requests.map((request) => request.path), ["/status"]);
+  } finally {
+    panel.restore();
+  }
+});
+
+test("tracks GitHub navigation in the panel's last-focused window", async () => {
+  const panel = await loadSidepanel({
+    url: "https://github.com/acme/shop/blob/main/src/auth.py",
+    async respond(request) {
+      throw new Error(`Unexpected API request: ${request.path}`);
+    },
+  });
+
+  try {
+    await panel.updateActiveUrl(
+      "https://github.com/acme/shop/pull/8/files",
+      "acme/shop · PR #8",
+    );
+
+    assert.deepEqual(panel.lastTabQuery, { active: true, lastFocusedWindow: true });
+    assert.equal(panel.elements.get("#review-pr-button").hidden, false);
+    assert.equal(panel.elements.get("#explain-file-button").hidden, true);
   } finally {
     panel.restore();
   }
