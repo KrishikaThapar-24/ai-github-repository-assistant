@@ -8,7 +8,7 @@ import time
 import httpx
 import streamlit as st
 
-API_URL = os.getenv("DEV_ASSISTANT_API_URL", "http://127.0.0.1:8000").rstrip("/")
+API_URL = os.getenv("DEV_ASSISTANT_API_URL", "http://127.0.0.1:8001").rstrip("/")
 
 st.set_page_config(page_title="AI GitHub Repository Assistant", page_icon="⌘", layout="wide")
 st.title("AI GitHub Repository Assistant")

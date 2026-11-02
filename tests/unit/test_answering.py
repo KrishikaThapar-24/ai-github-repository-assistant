@@ -12,6 +12,14 @@ def test_provider_factory_requires_secret_without_hardcoded_credentials() -> Non
         create_chat_model(Settings(_env_file=None))
 
 
+def test_openai_chat_model_has_a_bounded_output_length() -> None:
+    settings = Settings(openai_api_key="test-key", llm_max_output_tokens=640, _env_file=None)
+
+    model = create_chat_model(settings)
+
+    assert model.max_tokens == 640
+
+
 def test_langchain_answerer_supplies_source_ids_and_untrusted_evidence() -> None:
     captured = {}
 

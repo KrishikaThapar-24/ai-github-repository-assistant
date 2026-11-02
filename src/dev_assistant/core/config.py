@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     llm_timeout_seconds: int = Field(default=60, ge=1, le=300)
     llm_max_retries: int = Field(default=2, ge=0, le=5)
+    llm_max_output_tokens: int = Field(default=1200, ge=128, le=4096)
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
     github_token: SecretStr | None = None

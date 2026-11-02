@@ -119,6 +119,7 @@ def create_chat_model(settings: Settings) -> object:
         return ChatOpenAI(
             model=settings.llm_model or "gpt-6-luna",
             api_key=settings.openai_api_key.get_secret_value(),
+            max_tokens=settings.llm_max_output_tokens,
             timeout=settings.llm_timeout_seconds,
             max_retries=settings.llm_max_retries,
         )
@@ -133,6 +134,7 @@ def create_chat_model(settings: Settings) -> object:
     return ChatAnthropic(
         model=settings.llm_model or "claude-sonnet-5",
         api_key=settings.anthropic_api_key.get_secret_value(),
+        max_tokens=settings.llm_max_output_tokens,
         timeout=settings.llm_timeout_seconds,
         max_retries=settings.llm_max_retries,
     )
