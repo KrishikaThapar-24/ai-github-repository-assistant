@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.uv-cache/
+.tree-sitter-cache/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Local databases, indexes, and runtime data
+data/
+chroma_data/
+*.db
+*.sqlite3
+/outputs/
+/work/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

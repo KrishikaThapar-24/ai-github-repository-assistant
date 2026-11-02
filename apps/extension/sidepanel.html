@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Repository Assistant</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">AI DEVELOPER ASSISTANT</p>
+        <h1>Understand this repo</h1>
+        <p id="repository-context" class="muted">Open a GitHub repository to get started.</p>
+      </header>
+
+      <section class="card">
+        <label for="ref-input">Branch or commit (optional)</label>
+        <div class="row">
+          <input id="ref-input" autocomplete="off" placeholder="Default branch" />
+          <button id="connect-button" type="button">Index repo</button>
+        </div>
+        <p id="index-status" class="muted" aria-live="polite">Index the repository before asking code questions.</p>
+        <button id="review-pr-button" class="secondary full-width" type="button" hidden>Review this pull request</button>
+        <button id="investigate-issue-button" class="secondary full-width" type="button" hidden>Investigate this issue</button>
+      </section>
+
+      <section class="card">
+        <label for="search-input">Search repository code</label>
+        <div class="row">
+          <input id="search-input" autocomplete="off" placeholder="checkout retry handling" />
+          <button id="search-button" type="button">Search</button>
+        </div>
+      </section>
+
+      <section class="conversation" aria-live="polite">
+        <div id="messages"></div>
+      </section>
+
+      <form id="question-form" class="composer">
+        <label for="question-input">Ask about code, architecture, or GitHub activity</label>
+        <textarea id="question-input" rows="4" placeholder="Where is authentication implemented?" required></textarea>
+        <div class="quick-actions" aria-label="Suggested analysis tasks">
+          <button type="button" class="secondary" data-prompt="Review this code for concrete correctness, security, and reliability issues.">Review code</button>
+          <button type="button" class="secondary" data-prompt="Investigate why this code could be slow or fail. Trace the likely root cause across files.">Investigate bug</button>
+          <button type="button" class="secondary" data-prompt="Generate focused unit tests for this code, including important edge cases.">Generate tests</button>
+        </div>
+        <button id="ask-button" type="submit">Ask assistant</button>
+      </form>
+      <p class="footnote">Read-only access. Answers include source citations when code is indexed.</p>
+    </main>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

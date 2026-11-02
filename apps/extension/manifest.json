@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "AI GitHub Repository Assistant",
+  "version": "0.1.0",
+  "description": "Ask evidence-backed questions about the GitHub repository you are viewing.",
+  "permissions": ["activeTab", "sidePanel", "storage"],
+  "host_permissions": ["http://127.0.0.1:8000/*"],
+  "background": { "service_worker": "service_worker.js" },
+  "action": { "default_title": "Open repository assistant" },
+  "side_panel": { "default_path": "sidepanel.html" }
+}
