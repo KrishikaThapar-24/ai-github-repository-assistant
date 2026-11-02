@@ -40,7 +40,7 @@ class FakeElement {
   focus() {}
 }
 
-async function loadSidepanel({ url, respond }) {
+async function loadSidepanel({ url, sessionContext = null, respond }) {
   const selectors = [
     "#repository-context",
     "#ref-input",
@@ -72,6 +72,13 @@ async function loadSidepanel({ url, respond }) {
   };
   globalThis.chrome = {
     storage: {
+      session: {
+        async get(key) {
+          return key === "activeRepositoryTab" && sessionContext
+            ? { activeRepositoryTab: sessionContext }
+            : {};
+        },
+      },
       local: {
         async get(key) {
           return storedValues.has(key) ? { [key]: storedValues.get(key) } : {};
@@ -233,6 +240,28 @@ test("asks GitHub activity questions before a repository snapshot is indexed", a
       panel.elements.get("#messages").children[0].children[0].textContent,
       "The latest pull request is #42.",
     );
+  } finally {
+    panel.restore();
+  }
+});
+
+test("uses the toolbar-click tab context when Chrome hides the tab URL", async () => {
+  const panel = await loadSidepanel({
+    url: undefined,
+    sessionContext: {
+      tabId: 17,
+      url: "https://github.com/acme/shop/blob/main/src/auth.py",
+    },
+    async respond(request) {
+      throw new Error(`Unexpected API request: ${request.path}`);
+    },
+  });
+
+  try {
+    assert.equal(panel.elements.get("#repository-context").textContent, "acme/shop · src/auth.py");
+    assert.equal(panel.elements.get("#ref-input").value, "main");
+
+    assert.equal(panel.requests.length, 0);
   } finally {
     panel.restore();
   }

@@ -70,7 +70,14 @@ async function restoreIndexedSnapshot() {
 
 async function readActivePage() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const nextContext = tab?.url ? parseGitHubRepository(tab.url) : null;
+  let activeUrl = tab?.url || "";
+  if (!activeUrl && tab?.id != null) {
+    const { activeRepositoryTab } = await chrome.storage.session.get("activeRepositoryTab");
+    if (activeRepositoryTab?.tabId === tab.id) {
+      activeUrl = activeRepositoryTab.url;
+    }
+  }
+  const nextContext = activeUrl ? parseGitHubRepository(activeUrl) : null;
   if (
     nextContext?.repositoryId !== pageContext?.repositoryId
     || nextContext?.ref !== pageContext?.ref
