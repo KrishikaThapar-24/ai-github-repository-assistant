@@ -50,6 +50,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
     "#ask-button",
     "#review-pr-button",
     "#investigate-issue-button",
+    "#explain-file-button",
     "#search-button",
     "#search-input",
     "#question-input",
@@ -58,6 +59,10 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   ];
   const elements = new Map(selectors.map((selector) => [selector, new FakeElement()]));
   const promptButton = new FakeElement({ prompt: "Explain this repository." });
+  const explainFileButton = new FakeElement({
+    prompt: "Explain this file's purpose, its important functions and classes, and how it fits into the repository.",
+  });
+  elements.set("#explain-file-button", explainFileButton);
   const storedValues = new Map();
   const requests = [];
   let lastTabQuery = null;
@@ -69,7 +74,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
 
   globalThis.document = {
     querySelector: (selector) => elements.get(selector),
-    querySelectorAll: () => [promptButton],
+    querySelectorAll: () => [promptButton, explainFileButton],
     createElement: () => new FakeElement(),
   };
   globalThis.chrome = {
@@ -143,6 +148,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   return {
     elements,
     promptButton,
+    explainFileButton,
     requests,
     storedValues,
     get lastTabQuery() {
@@ -195,6 +201,7 @@ test("indexes the active repository and searches the matching snapshot with cita
   try {
     assert.equal(panel.elements.get("#repository-context").textContent, "acme/shop · src/auth.py");
     assert.equal(panel.elements.get("#ref-input").value, "main");
+    assert.equal(panel.explainFileButton.hidden, false);
     assert.deepEqual(panel.lastTabQuery, { active: true, lastFocusedWindow: true });
 
     await panel.elements.get("#connect-button").dispatch("click");
@@ -226,6 +233,51 @@ test("indexes the active repository and searches the matching snapshot with cita
   }
 });
 
+test("explains the active GitHub source file using its indexed repository context", async () => {
+  const panel = await loadSidepanel({
+    url: "https://github.com/acme/shop/blob/main/src/auth.py",
+    async respond(request) {
+      if (request.path === "/repositories/connect") return { job_id: "job-file" };
+      if (request.path === "/repositories/jobs/job-file") {
+        return {
+          status: "succeeded",
+          result: {
+            commit_sha: "deadbeef12345678",
+            file_count: 2,
+            chunk_count: 3,
+            dependency_count: 1,
+            call_count: 0,
+          },
+        };
+      }
+      if (request.path === "/assistant/ask") {
+        return { answer: "This module validates credentials.", citations: [] };
+      }
+      throw new Error(`Unexpected API request: ${request.path}`);
+    },
+  });
+
+  try {
+    await panel.elements.get("#connect-button").dispatch("click");
+    await panel.explainFileButton.dispatch("click");
+    await panel.elements.get("#question-form").dispatch("submit", { preventDefault() {} });
+
+    const askRequest = panel.requests.find((request) => request.path === "/assistant/ask");
+    assert.deepEqual(askRequest.body, {
+      repository_id: "acme/shop",
+      commit_sha: "deadbeef12345678",
+      question: panel.explainFileButton.dataset.prompt,
+      path: "src/auth.py",
+    });
+    assert.equal(
+      panel.elements.get("#messages").children[0].children[0].textContent,
+      "This module validates credentials.",
+    );
+  } finally {
+    panel.restore();
+  }
+});
+
 test("asks GitHub activity questions before a repository snapshot is indexed", async () => {
   const panel = await loadSidepanel({
     url: "https://github.com/acme/shop",
@@ -238,6 +290,7 @@ test("asks GitHub activity questions before a repository snapshot is indexed", a
   });
 
   try {
+    assert.equal(panel.explainFileButton.hidden, true);
     const questionInput = panel.elements.get("#question-input");
     questionInput.value = "When was the last PR issued?";
     await panel.elements.get("#question-form").dispatch("submit", { preventDefault() {} });

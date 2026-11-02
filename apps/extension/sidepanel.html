@@ -41,6 +41,7 @@
         <label for="question-input">Ask about code, architecture, or GitHub activity</label>
         <textarea id="question-input" rows="4" placeholder="Where is authentication implemented?" required></textarea>
         <div class="quick-actions" aria-label="Suggested analysis tasks">
+          <button id="explain-file-button" type="button" class="secondary" data-prompt="Explain this file's purpose, its important functions and classes, and how it fits into the repository.">Explain this file</button>
           <button type="button" class="secondary" data-prompt="Review this code for concrete correctness, security, and reliability issues.">Review code</button>
           <button type="button" class="secondary" data-prompt="Investigate why this code could be slow or fail. Trace the likely root cause across files.">Investigate bug</button>
           <button type="button" class="secondary" data-prompt="Generate focused unit tests for this code, including important edge cases.">Generate tests</button>

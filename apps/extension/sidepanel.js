@@ -10,6 +10,7 @@ const connectButton = document.querySelector("#connect-button");
 const askButton = document.querySelector("#ask-button");
 const reviewPullRequestButton = document.querySelector("#review-pr-button");
 const investigateIssueButton = document.querySelector("#investigate-issue-button");
+const explainFileButton = document.querySelector("#explain-file-button");
 const searchButton = document.querySelector("#search-button");
 const searchInput = document.querySelector("#search-input");
 const questionInput = document.querySelector("#question-input");
@@ -96,6 +97,7 @@ async function readActivePage() {
     askButton.disabled = true;
     reviewPullRequestButton.hidden = true;
     investigateIssueButton.hidden = true;
+    explainFileButton.hidden = true;
     return;
   }
 
@@ -111,6 +113,7 @@ async function readActivePage() {
   askButton.disabled = false;
   reviewPullRequestButton.hidden = !pageContext.pullRequestNumber;
   investigateIssueButton.hidden = !pageContext.issueNumber;
+  explainFileButton.hidden = !pageContext.path;
   await restoreIndexedSnapshot();
 }
 
