@@ -29,7 +29,7 @@ REST is the default GitHub activity backend. To use the official GitHub MCP serv
 Start the API from the repository root and keep it on loopback:
 
 ```powershell
-uv run uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 --reload
+uv run uvicorn apps.api.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 For the Streamlit development client, open another terminal:
@@ -40,7 +40,7 @@ uv run streamlit run apps/web/streamlit_app.py
 
 To try the Chrome side panel, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the `apps/extension` directory. Copy the ID displayed by Chrome into `DEV_ASSISTANT_CHROME_EXTENSION_ID` in `.env`, then restart the API; CORS permits only that configured extension ID. Open a GitHub repository, click the extension icon, choose **Index repo**, then ask a code question. The panel stores the selected repository/ref/commit locally so reopening it restores the matching snapshot; it does not store GitHub credentials. On a pull-request page, **Review this pull request** fetches a bounded diff and returns an advisory review with line citations. On an issue page, **Investigate this issue** compares the issue report and comments with indexed code and returns code citations. The first HuggingFace model load downloads model files and can take a while. PR, issue, and commit activity questions do not require indexing.
 
-The FastAPI docs are available at `http://127.0.0.1:8000/docs` while the local server is running.
+The FastAPI docs are available at `http://127.0.0.1:8001/docs` while the local server is running.
 
 ## Security defaults
 

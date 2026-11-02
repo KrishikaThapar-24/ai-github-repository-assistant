@@ -1,7 +1,7 @@
 import { parseGitHubRepository } from "./github_context.js";
 import { loadIndexedSnapshot, saveIndexedSnapshot, snapshotStorageKey } from "./snapshot_storage.js";
 
-const API_BASE = "http://127.0.0.1:8000/api/v1";
+const API_BASE = "http://127.0.0.1:8001/api/v1";
 const contextLabel = document.querySelector("#repository-context");
 const refInput = document.querySelector("#ref-input");
 const statusLabel = document.querySelector("#index-status");
@@ -156,7 +156,7 @@ async function refreshBackendStatus() {
       : "Public repositories work without a token; private repositories need a read-only GitHub token in .env.";
     backendStatusLabel.textContent = `API ready. ${modelStatus} ${githubStatus}`;
   } catch (error) {
-    backendStatusLabel.textContent = `Can't reach the local API at 127.0.0.1:8000. Start it with uvicorn from the project root. ${explainError(error)}`;
+    backendStatusLabel.textContent = `Can't reach the local API at 127.0.0.1:8001. Start it with uvicorn from the project root. ${explainError(error)}`;
   }
 }
 

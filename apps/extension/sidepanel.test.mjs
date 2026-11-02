@@ -106,7 +106,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   };
   globalThis.fetch = async (requestUrl, options = {}) => {
     const request = {
-      path: requestUrl.replace("http://127.0.0.1:8000/api/v1", ""),
+      path: requestUrl.replace("http://127.0.0.1:8001/api/v1", ""),
       method: options.method ?? "GET",
       body: options.body ? JSON.parse(options.body) : null,
     };
