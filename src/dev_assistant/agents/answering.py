@@ -33,6 +33,24 @@ proposal: do not claim it was executed, and do not modify the repository.""",
 }
 
 
+def _format_evidence(evidence: list[SearchResult]) -> str:
+    """Keep repository-controlled text inside the untrusted evidence boundary."""
+
+    entries = []
+    for index, result in enumerate(evidence, start=1):
+        path = escape(result.path, quote=False)
+        symbol_kind = escape(result.symbol_kind, quote=False)
+        symbol_name = escape(result.symbol_name, quote=False)
+        commit_sha = escape(result.commit_sha, quote=False)
+        content = escape(result.content, quote=False)
+        entries.append(
+            f"[S{index}] {path}:L{result.start_line}-L{result.end_line} "
+            f"(symbol: {symbol_kind} {symbol_name}; commit: {commit_sha})\n"
+            f"<untrusted_source>\n{content}\n</untrusted_source>"
+        )
+    return "\n\n".join(entries)
+
+
 class LangChainAnswerer:
     def __init__(self, chat_model: object) -> None:
         try:
@@ -60,12 +78,7 @@ class LangChainAnswerer:
         }
 
     def answer(self, question: str, evidence: list[SearchResult]) -> str:
-        context = "\n\n".join(
-            f"[S{index}] {result.path}:L{result.start_line}-L{result.end_line} "
-            f"(symbol: {result.symbol_kind} {result.symbol_name}; commit: {result.commit_sha})\n"
-            f"<untrusted_source>\n{result.content}\n</untrusted_source>"
-            for index, result in enumerate(evidence, start=1)
-        )
+        context = _format_evidence(evidence)
         return self._chain.invoke({"question": question, "context": context})
 
     def analyze(
@@ -81,12 +94,7 @@ class LangChainAnswerer:
         chain = self._analysis_chains.get(mode)
         if chain is None:
             raise ValueError(f"Unsupported analysis workflow: {mode}")
-        context = "\n\n".join(
-            f"[S{index}] {result.path}:L{result.start_line}-L{result.end_line} "
-            f"(symbol: {result.symbol_kind} {result.symbol_name}; commit: {result.commit_sha})\n"
-            f"<untrusted_source>\n{result.content}\n</untrusted_source>"
-            for index, result in enumerate(evidence, start=1)
-        )
+        context = _format_evidence(evidence)
         if external_context:
             context += (
                 "\n\n<untrusted_issue_context>\n"
