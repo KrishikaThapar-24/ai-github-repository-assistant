@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import ast
+import posixpath
 import re
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from dev_assistant.ingestion.models import RepositorySnapshot, SourceFile
+from dev_assistant.ingestion.source import LANGUAGE_BY_SUFFIX
 from dev_assistant.search.models import SearchResult
 
 
@@ -122,6 +124,82 @@ class PythonDependencyAnalyzer:
             if parent in module_paths:
                 return module_paths[parent]
         return None
+
+
+class JavaScriptDependencyAnalyzer:
+    """Resolve relative JavaScript and TypeScript module imports."""
+
+    _MODULE_PATTERNS = (
+        re.compile(
+            r"(?m)^[ \t]*(?:import|export)\s+(?:[^;\n]*?\s+from\s+)?['\"]([^'\"]+)['\"]"
+        ),
+        re.compile(r"\brequire\s*\(\s*['\"]([^'\"]+)['\"]\s*\)"),
+        re.compile(r"\bimport\s*\(\s*['\"]([^'\"]+)['\"]\s*\)"),
+    )
+    _EXTENSIONS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
+
+    def analyze(self, snapshot: RepositorySnapshot) -> list[DependencyFact]:
+        paths = {
+            source_file.path
+            for source_file in snapshot.files
+            if source_file.language in {"javascript", "typescript", "tsx"}
+        }
+        facts: set[DependencyFact] = set()
+        for source_file in snapshot.files:
+            if source_file.language not in {"javascript", "typescript", "tsx"}:
+                continue
+            matches: dict[tuple[int, str], str] = {}
+            for pattern in self._MODULE_PATTERNS:
+                for match in pattern.finditer(source_file.content):
+                    specifier = match.group(1)
+                    if not specifier.startswith("."):
+                        continue
+                    line = source_file.content.count("\n", 0, match.start()) + 1
+                    snippet = source_file.content.splitlines()[line - 1].strip()
+                    if snippet.startswith(("//", "/*", "*")):
+                        continue
+                    matches[(line, specifier)] = snippet
+
+            for (line, specifier), snippet in matches.items():
+                target_path = self._resolve_path(source_file.path, specifier, paths)
+                if target_path is None or target_path == source_file.path:
+                    continue
+                facts.add(
+                    DependencyFact(
+                        snapshot.repository_id,
+                        snapshot.commit_sha,
+                        source_file.path,
+                        line,
+                        specifier,
+                        target_path,
+                        snippet,
+                    )
+                )
+        return sorted(facts, key=lambda fact: (fact.source_path, fact.line, fact.target_path))
+
+    @classmethod
+    def _resolve_path(cls, source_path: str, specifier: str, paths: set[str]) -> str | None:
+        base = posixpath.normpath(posixpath.join(posixpath.dirname(source_path), specifier))
+        if base == ".." or base.startswith("../") or base.startswith("/"):
+            return None
+        candidates = [base]
+        if not PurePosixPath(base).suffix:
+            candidates.extend(f"{base}{extension}" for extension in cls._EXTENSIONS)
+            candidates.extend(
+                f"{base}/index{extension}" for extension in cls._EXTENSIONS
+            )
+        return next((candidate for candidate in candidates if candidate in paths), None)
+
+
+class RepositoryDependencyAnalyzer:
+    """Combine language-specific analyzers for repository-local imports."""
+
+    def __init__(self) -> None:
+        self._analyzers = (PythonDependencyAnalyzer(), JavaScriptDependencyAnalyzer())
+
+    def analyze(self, snapshot: RepositorySnapshot) -> list[DependencyFact]:
+        facts = [fact for analyzer in self._analyzers for fact in analyzer.analyze(snapshot)]
+        return sorted(set(facts), key=lambda fact: (fact.source_path, fact.line, fact.target_path))
 
 
 class PythonCallAnalyzer:
@@ -339,7 +417,7 @@ class SQLiteDependencyIndex:
         return connection
 
     def index_snapshot(self, snapshot: RepositorySnapshot) -> int:
-        facts = PythonDependencyAnalyzer().analyze(snapshot)
+        facts = RepositoryDependencyAnalyzer().analyze(snapshot)
         with self._connection() as connection:
             connection.execute(
                 "DELETE FROM dependency_edges WHERE repository_id = ? AND commit_sha = ?",
@@ -430,7 +508,9 @@ class SQLiteDependencyIndex:
                 repository_id=repository_id,
                 commit_sha=commit_sha,
                 path=row["source_path"],
-                language="python",
+                language=LANGUAGE_BY_SUFFIX.get(
+                    PurePosixPath(row["source_path"]).suffix.lower(), "text"
+                ),
                 content=f"Internal dependency: {row['source_path']} imports {row['target_module']} from {row['target_path']}.\n{row['content']}",
                 start_line=row["line"],
                 end_line=row["line"],

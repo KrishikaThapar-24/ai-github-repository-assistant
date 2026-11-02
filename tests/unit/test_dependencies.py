@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from dev_assistant.code_intel.dependencies import (
+    JavaScriptDependencyAnalyzer,
     PythonCallAnalyzer,
     PythonDependencyAnalyzer,
     SQLiteDependencyIndex,
@@ -38,6 +39,40 @@ def test_dependency_analyzer_resolves_absolute_and_relative_internal_imports() -
     assert all(fact.source_path == "src/dev_assistant/api/client.py" for fact in facts)
 
 
+def test_javascript_dependency_analyzer_resolves_relative_module_imports() -> None:
+    snapshot = RepositorySnapshot(
+        "acme/web",
+        "main",
+        "feed1234",
+        (
+            SourceFile(
+                "web/src/App.tsx",
+                "\n"
+                "import { Checkout } from './components/Checkout';\n"
+                "export { routes } from '../routes';\n"
+                "const lazy = import('./lazy');\n"
+                "const legacy = require('./legacy');\n"
+                "import React from 'react';\n"
+                "// import ignored from './commented-out';\n",
+                "tsx",
+            ),
+            SourceFile("web/src/components/Checkout.tsx", "export function Checkout() {}", "tsx"),
+            SourceFile("web/routes.ts", "export const routes = [];", "typescript"),
+            SourceFile("web/src/lazy.ts", "export default {};", "typescript"),
+            SourceFile("web/src/legacy.js", "module.exports = {};", "javascript"),
+        ),
+    )
+
+    facts = JavaScriptDependencyAnalyzer().analyze(snapshot)
+
+    assert [(fact.line, fact.target_module, fact.target_path) for fact in facts] == [
+        (2, "./components/Checkout", "web/src/components/Checkout.tsx"),
+        (3, "../routes", "web/routes.ts"),
+        (4, "./lazy", "web/src/lazy.ts"),
+        (5, "./legacy", "web/src/legacy.js"),
+    ]
+
+
 def test_dependency_index_returns_cited_edges_and_reindexes_idempotently(tmp_path: Path) -> None:
     index = SQLiteDependencyIndex(tmp_path / "dependencies.sqlite3")
     snapshot = dependency_snapshot()
@@ -50,6 +85,26 @@ def test_dependency_index_returns_cited_edges_and_reindexes_idempotently(tmp_pat
     assert results[0].path == "src/dev_assistant/api/client.py"
     assert results[0].start_line == 2
     assert "src/dev_assistant/api/routes.py" in results[0].content
+
+
+def test_dependency_index_preserves_javascript_source_language(tmp_path: Path) -> None:
+    snapshot = RepositorySnapshot(
+        "acme/web",
+        "main",
+        "feed1234",
+        (
+            SourceFile("src/App.tsx", "import { Page } from './Page';", "tsx"),
+            SourceFile("src/Page.tsx", "export function Page() {}", "tsx"),
+        ),
+    )
+    index = SQLiteDependencyIndex(tmp_path / "dependencies.sqlite3")
+
+    assert index.index_snapshot(snapshot) == 1
+    results = index.search("acme/web", "feed1234", "Page")
+
+    assert len(results) == 1
+    assert results[0].language == "tsx"
+    assert results[0].start_line == 1
 
 
 def test_ingestion_service_builds_dependency_index_for_the_pinned_snapshot(tmp_path: Path) -> None:
