@@ -1,5 +1,6 @@
 import time
 from dataclasses import make_dataclass
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,7 @@ from dev_assistant.api.schemas import (
     PullRequestReviewRequest,
 )
 from dev_assistant.core.config import Settings
+from dev_assistant.worker.jobs import InMemoryJobRunner
 
 
 def test_connect_repository_returns_a_pollable_job(monkeypatch) -> None:
@@ -42,6 +44,43 @@ def test_connect_repository_returns_a_pollable_job(monkeypatch) -> None:
 
     assert job.status == "succeeded"
     assert job.result["commit_sha"] == "deadbeef123"
+
+
+def test_connect_repository_reuses_an_active_job_for_same_repository_and_ref(monkeypatch) -> None:
+    started = Event()
+    release = Event()
+    calls = []
+    monkeypatch.setattr(routes, "jobs", InMemoryJobRunner(max_workers=1))
+
+    def slow_ingest(repository_id, ref, settings):
+        calls.append((repository_id, ref))
+        started.set()
+        release.wait(timeout=2)
+        return {
+            "repository_id": repository_id,
+            "ref": ref,
+            "commit_sha": "deadbeef123",
+            "file_count": 5,
+            "chunk_count": 8,
+        }
+
+    monkeypatch.setattr(routes, "_ingest_repository", slow_ingest)
+    request = ConnectRepositoryRequest(repository_id="acme/demo", ref="main")
+
+    first = routes.connect_repository(request, Settings())
+    assert started.wait(timeout=1)
+    duplicate = routes.connect_repository(request, Settings())
+    release.set()
+
+    assert duplicate.job_id == first.job_id
+    for _ in range(100):
+        job = routes.get_repository_job(first.job_id)
+        if job.status in {"succeeded", "failed"}:
+            break
+        time.sleep(0.01)
+
+    assert job.status == "succeeded"
+    assert calls == [("acme/demo", "main")]
 
 
 def test_service_status_reports_capabilities_without_exposing_credentials() -> None:

@@ -96,7 +96,10 @@ def connect_repository(
 ) -> JobResponse:
     """Start a read-only repository snapshot and indexing job."""
 
-    job = jobs.submit(lambda: _ingest_repository(request.repository_id, request.ref, settings))
+    job = jobs.submit(
+        lambda: _ingest_repository(request.repository_id, request.ref, settings),
+        dedupe_key=(request.repository_id, request.ref),
+    )
     return JobResponse(**asdict(job))
 
 
