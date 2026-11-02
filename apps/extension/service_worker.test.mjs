@@ -5,6 +5,7 @@ let serviceWorkerInstance = 0;
 
 async function loadServiceWorker() {
   let actionHandler;
+  let panelOpened = false;
   const calls = [];
   const previousChrome = globalThis.chrome;
 
@@ -20,12 +21,25 @@ async function loadServiceWorker() {
       session: {
         async set(value) {
           calls.push({ type: "store", value });
+          return {
+            then(resolve, reject) {
+              if (!panelOpened) {
+                reject(new Error("storage write was awaited before opening the panel"));
+                return;
+              }
+              resolve();
+            },
+          };
         },
       },
     },
     sidePanel: {
+      async setPanelBehavior(value) {
+        calls.push({ type: "behavior", value });
+      },
       async open(value) {
         calls.push({ type: "open", value });
+        panelOpened = true;
       },
     },
   };
@@ -48,6 +62,7 @@ test("stores the clicked GitHub tab before opening its side panel", async () => 
     await worker.actionHandler(tab);
 
     assert.deepEqual(worker.calls, [
+      { type: "behavior", value: { openPanelOnActionClick: false } },
       {
         type: "store",
         value: { activeRepositoryTab: { tabId: 17, url: tab.url } },
@@ -64,7 +79,9 @@ test("ignores action events without an associated tab", async () => {
 
   try {
     await worker.actionHandler({});
-    assert.deepEqual(worker.calls, []);
+    assert.deepEqual(worker.calls, [
+      { type: "behavior", value: { openPanelOnActionClick: false } },
+    ]);
   } finally {
     worker.restore();
   }

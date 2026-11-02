@@ -12,7 +12,10 @@ from dev_assistant.search.vector_store import ChromaCodeStore
 
 
 def create_search_service(settings: Settings) -> CodeSearchService:
-    embeddings = HuggingFaceEmbeddingProvider(settings.embedding_model_name)
+    embeddings = HuggingFaceEmbeddingProvider(
+        settings.embedding_model_name,
+        cache_folder=settings.embedding_cache_directory,
+    )
     return CodeSearchService(
         embeddings=embeddings,
         vectors=ChromaCodeStore(settings.chroma_persist_directory),

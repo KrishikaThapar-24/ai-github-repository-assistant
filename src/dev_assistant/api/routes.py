@@ -20,6 +20,7 @@ from dev_assistant.api.schemas import (
     JobResponse,
     PullRequestReviewRequest,
     PullRequestReviewResponse,
+    ServiceStatusResponse,
 )
 from dev_assistant.core.config import Settings, get_settings
 from dev_assistant.github.activity import (
@@ -39,6 +40,24 @@ from dev_assistant.worker.jobs import InMemoryJobRunner
 
 router = APIRouter(prefix="/api/v1")
 jobs = InMemoryJobRunner()
+
+
+@router.get("/status", response_model=ServiceStatusResponse)
+def get_service_status(settings: Settings = Depends(get_settings)) -> ServiceStatusResponse:
+    """Report configured capabilities without returning any credential values."""
+
+    llm_configured = (
+        settings.openai_api_key is not None
+        if settings.llm_provider == "openai"
+        else settings.anthropic_api_key is not None
+    )
+    return ServiceStatusResponse(
+        api_status="ready",
+        llm_provider=settings.llm_provider,
+        llm_configured=llm_configured,
+        github_activity_backend=settings.github_activity_backend,
+        github_token_configured=settings.github_token is not None,
+    )
 
 
 @lru_cache(maxsize=1)

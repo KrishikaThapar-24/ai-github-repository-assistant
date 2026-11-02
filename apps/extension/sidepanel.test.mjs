@@ -45,6 +45,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
     "#repository-context",
     "#ref-input",
     "#index-status",
+    "#backend-status",
     "#connect-button",
     "#ask-button",
     "#review-pr-button",
@@ -59,6 +60,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   const promptButton = new FakeElement({ prompt: "Explain this repository." });
   const storedValues = new Map();
   const requests = [];
+  let lastTabQuery = null;
   const previousGlobals = {
     chrome: globalThis.chrome,
     document: globalThis.document,
@@ -89,7 +91,8 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
       },
     },
     tabs: {
-      async query() {
+      async query(query) {
+        lastTabQuery = query;
         return [{ id: 17, url }];
       },
       onActivated: { addListener() {} },
@@ -103,7 +106,15 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
       body: options.body ? JSON.parse(options.body) : null,
     };
     requests.push(request);
-    const payload = await respond(request);
+    const payload = request.path === "/status"
+      ? {
+          api_status: "ready",
+          llm_provider: "openai",
+          llm_configured: false,
+          github_activity_backend: "rest",
+          github_token_configured: false,
+        }
+      : await respond(request);
     return {
       ok: true,
       async json() {
@@ -121,7 +132,11 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   }
   const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}#sidepanel-test-${sidepanelInstance++}`;
   await import(moduleUrl);
-  for (let attempt = 0; attempt < 500 && !elements.get("#repository-context").textContent; attempt += 1) {
+  for (
+    let attempt = 0;
+    attempt < 500 && !elements.get("#backend-status").textContent;
+    attempt += 1
+  ) {
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
 
@@ -130,6 +145,9 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
     promptButton,
     requests,
     storedValues,
+    get lastTabQuery() {
+      return lastTabQuery;
+    },
     restore() {
       globalThis.chrome = previousGlobals.chrome;
       globalThis.document = previousGlobals.document;
@@ -177,10 +195,14 @@ test("indexes the active repository and searches the matching snapshot with cita
   try {
     assert.equal(panel.elements.get("#repository-context").textContent, "acme/shop · src/auth.py");
     assert.equal(panel.elements.get("#ref-input").value, "main");
+    assert.deepEqual(panel.lastTabQuery, { active: true, lastFocusedWindow: true });
 
     await panel.elements.get("#connect-button").dispatch("click");
-    assert.deepEqual(panel.requests[0].body, { repository_id: "acme/shop", ref: "main" });
+    const connectRequest = panel.requests.find((request) => request.path === "/repositories/connect");
+    assert.deepEqual(connectRequest.body, { repository_id: "acme/shop", ref: "main" });
     assert.equal(panel.elements.get("#index-status").textContent.includes("Indexed 3 files"), true);
+    assert.match(panel.elements.get("#backend-status").textContent, /AI answers need DEV_ASSISTANT_OPENAI_API_KEY/);
+    assert.match(panel.elements.get("#backend-status").textContent, /Public repositories work without a token/);
     assert.equal(
       panel.storedValues.get(snapshotStorageKey("acme/shop", "main")).commitSha,
       commitSha,
@@ -221,7 +243,7 @@ test("asks GitHub activity questions before a repository snapshot is indexed", a
     await panel.elements.get("#question-form").dispatch("submit", { preventDefault() {} });
 
     assert.deepEqual(
-      panel.requests,
+      panel.requests.filter((request) => request.path !== "/status"),
       [
         {
           path: "/assistant/ask",
@@ -245,6 +267,43 @@ test("asks GitHub activity questions before a repository snapshot is indexed", a
   }
 });
 
+test("explains how to enable generated answers when the model key is missing", async () => {
+  const panel = await loadSidepanel({
+    url: "https://github.com/acme/shop",
+    async respond(request) {
+      if (request.path === "/repositories/connect") return { job_id: "job-2" };
+      if (request.path === "/repositories/jobs/job-2") {
+        return {
+          status: "succeeded",
+          result: {
+            commit_sha: "deadbeef12345678",
+            file_count: 1,
+            chunk_count: 1,
+            dependency_count: 0,
+            call_count: 0,
+          },
+        };
+      }
+      if (request.path === "/assistant/ask") {
+        throw new Error("Set DEV_ASSISTANT_OPENAI_API_KEY to enable the configured OpenAI model.");
+      }
+      throw new Error(`Unexpected API request: ${request.path}`);
+    },
+  });
+
+  try {
+    await panel.elements.get("#connect-button").dispatch("click");
+    panel.elements.get("#question-input").value = "What does the main page do?";
+    await panel.elements.get("#question-form").dispatch("submit", { preventDefault() {} });
+
+    const errorMessage = panel.elements.get("#messages").children[0].children[0].textContent;
+    assert.match(errorMessage, /ignored \.env file and restart the API/);
+    assert.match(errorMessage, /code search, and GitHub activity still work/);
+  } finally {
+    panel.restore();
+  }
+});
+
 test("uses the toolbar-click tab context when Chrome hides the tab URL", async () => {
   const panel = await loadSidepanel({
     url: undefined,
@@ -261,7 +320,7 @@ test("uses the toolbar-click tab context when Chrome hides the tab URL", async (
     assert.equal(panel.elements.get("#repository-context").textContent, "acme/shop · src/auth.py");
     assert.equal(panel.elements.get("#ref-input").value, "main");
 
-    assert.equal(panel.requests.length, 0);
+    assert.deepEqual(panel.requests.map((request) => request.path), ["/status"]);
   } finally {
     panel.restore();
   }

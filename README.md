@@ -22,7 +22,7 @@ uv run ruff check src tests apps
 npm --prefix apps/extension test
 ```
 
-Copy `.env.example` to `.env`. For private repositories, set a fine-grained GitHub token with read-only Contents, Pull requests, and Issues permissions. Set the key for the provider selected by `DEV_ASSISTANT_LLM_PROVIDER`. Public repositories can be read without a GitHub token. All credentials stay in the backend environment, not the extension.
+Copy `.env.example` to `.env`. Public repository indexing, code search, and GitHub activity lookups work without credentials. For private repositories, set a fine-grained GitHub token with read-only Contents, Pull requests, and Issues permissions. Code answers, reviews, issue investigations, and test proposals need the API key for the provider selected by `DEV_ASSISTANT_LLM_PROVIDER`; without it, indexing, direct code search, and GitHub activity still work. Add secrets only to the ignored local `.env` file, then restart the API. Keep credentials in the backend environment, not in the extension or source control.
 
 REST is the default GitHub activity backend. To use the official GitHub MCP server instead, install Docker, set `DEV_ASSISTANT_GITHUB_ACTIVITY_BACKEND=mcp` in `.env`, and provide the read-only GitHub token. Install the MCP SDK with `uv sync --extra dev --extra ai --extra ui --extra github-mcp`. The first MCP request downloads the configured image (`DEV_ASSISTANT_GITHUB_MCP_IMAGE`); repository, issues, and pull-request toolsets run with server-side read-only mode enabled.
 

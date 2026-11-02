@@ -44,6 +44,24 @@ def test_connect_repository_returns_a_pollable_job(monkeypatch) -> None:
     assert job.result["commit_sha"] == "deadbeef123"
 
 
+def test_service_status_reports_capabilities_without_exposing_credentials() -> None:
+    settings = Settings(
+        _env_file=None,
+        openai_api_key="openai-test-secret",
+        github_token="github-test-secret",
+    )
+
+    response = routes.get_service_status(settings)
+    serialized = response.model_dump_json()
+
+    assert response.api_status == "ready"
+    assert response.llm_provider == "openai"
+    assert response.llm_configured
+    assert response.github_token_configured
+    assert "openai-test-secret" not in serialized
+    assert "github-test-secret" not in serialized
+
+
 def test_repository_ingestion_uses_the_cached_search_service(monkeypatch) -> None:
     from dev_assistant.code_intel import dependencies
     from dev_assistant.ingestion import service
@@ -319,6 +337,7 @@ def test_openapi_contains_client_endpoints() -> None:
     from dev_assistant.api.main import app
 
     paths = app.openapi()["paths"]
+    assert "/api/v1/status" in paths
     assert "/api/v1/repositories/connect" in paths
     assert "/api/v1/assistant/ask" in paths
     assert "/api/v1/assistant/search" in paths

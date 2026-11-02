@@ -5,6 +5,7 @@ const API_BASE = "http://127.0.0.1:8000/api/v1";
 const contextLabel = document.querySelector("#repository-context");
 const refInput = document.querySelector("#ref-input");
 const statusLabel = document.querySelector("#index-status");
+const backendStatusLabel = document.querySelector("#backend-status");
 const connectButton = document.querySelector("#connect-button");
 const askButton = document.querySelector("#ask-button");
 const reviewPullRequestButton = document.querySelector("#review-pr-button");
@@ -69,7 +70,7 @@ async function restoreIndexedSnapshot() {
 }
 
 async function readActivePage() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   let activeUrl = tab?.url || "";
   if (!activeUrl && tab?.id != null) {
     const { activeRepositoryTab } = await chrome.storage.session.get("activeRepositoryTab");
@@ -132,6 +133,30 @@ async function request(path, options = {}) {
   return payload;
 }
 
+function explainError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/^Set DEV_ASSISTANT_(OPENAI|ANTHROPIC)_API_KEY\b/.test(message)) {
+    return `${message} Add the key to your ignored .env file and restart the API. `
+      + "Repository indexing, code search, and GitHub activity still work without it.";
+  }
+  return message;
+}
+
+async function refreshBackendStatus() {
+  try {
+    const status = await request("/status");
+    const modelStatus = status.llm_configured
+      ? `AI answers are enabled with ${status.llm_provider}.`
+      : `AI answers need ${status.llm_provider === "openai" ? "DEV_ASSISTANT_OPENAI_API_KEY" : "DEV_ASSISTANT_ANTHROPIC_API_KEY"} in the backend .env file; restart the API after adding it.`;
+    const githubStatus = status.github_token_configured
+      ? "A GitHub token is configured for private repositories."
+      : "Public repositories work without a token; private repositories need a read-only GitHub token in .env.";
+    backendStatusLabel.textContent = `API ready. ${modelStatus} ${githubStatus}`;
+  } catch (error) {
+    backendStatusLabel.textContent = `Can't reach the local API at 127.0.0.1:8000. Start it with uvicorn from the project root. ${explainError(error)}`;
+  }
+}
+
 function showMessage(text, { error = false, citations = [] } = {}) {
   const card = document.createElement("article");
   card.className = error ? "message error" : "message";
@@ -184,7 +209,7 @@ connectButton.addEventListener("click", async () => {
       statusLabel.textContent = `Indexed ${indexed.file_count} files, ${indexed.chunk_count} code sections, ${indexed.dependency_count} imports, and ${indexed.call_count} cross-file calls at ${indexed.commit_sha.slice(0, 8)}.`;
     }
   } catch (error) {
-    statusLabel.textContent = error.message;
+    statusLabel.textContent = explainError(error);
   } finally {
     connectButton.disabled = false;
   }
@@ -207,7 +232,7 @@ reviewPullRequestButton.addEventListener("click", async () => {
     });
     statusLabel.textContent = `Reviewed pull request #${review.pull_request_number} at ${review.head_sha.slice(0, 8)}.`;
   } catch (error) {
-    statusLabel.textContent = error.message;
+    statusLabel.textContent = explainError(error);
   } finally {
     reviewPullRequestButton.disabled = false;
   }
@@ -242,8 +267,9 @@ investigateIssueButton.addEventListener("click", async () => {
       ? `Investigated issue #${investigation.issue_number}; its report or comments were truncated.`
       : `Investigated issue #${investigation.issue_number}.`;
   } catch (error) {
-    showMessage(error.message, { error: true });
-    statusLabel.textContent = error.message;
+    const message = explainError(error);
+    showMessage(message, { error: true });
+    statusLabel.textContent = message;
   } finally {
     investigateIssueButton.disabled = false;
   }
@@ -282,8 +308,9 @@ searchButton.addEventListener("click", async () => {
     }
     statusLabel.textContent = `Found ${response.results.length} code matches.`;
   } catch (error) {
-    showMessage(error.message, { error: true });
-    statusLabel.textContent = error.message;
+    const message = explainError(error);
+    showMessage(message, { error: true });
+    statusLabel.textContent = message;
   } finally {
     searchButton.disabled = false;
   }
@@ -317,12 +344,16 @@ document.querySelector("#question-form").addEventListener("submit", async (event
     });
     showMessage(answer.answer, { citations: answer.citations });
   } catch (error) {
-    showMessage(error.message, { error: true });
+    showMessage(explainError(error), { error: true });
   } finally {
     askButton.disabled = false;
   }
 });
 
-readActivePage().catch((error) => {
-  contextLabel.textContent = error.message;
-});
+readActivePage()
+  .then(() => {
+    if (pageContext) return refreshBackendStatus();
+  })
+  .catch((error) => {
+    contextLabel.textContent = error.message;
+  });

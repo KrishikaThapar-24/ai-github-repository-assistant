@@ -1,6 +1,16 @@
 """Transport models for the versioned API."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+
+class ServiceStatusResponse(BaseModel):
+    api_status: Literal["ready"]
+    llm_provider: Literal["openai", "anthropic"]
+    llm_configured: bool
+    github_activity_backend: Literal["rest", "mcp"]
+    github_token_configured: bool
 
 
 class ConnectRepositoryRequest(BaseModel):

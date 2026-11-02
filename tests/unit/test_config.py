@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -9,6 +11,7 @@ def test_settings_have_safe_development_defaults() -> None:
 
     assert settings.environment == "development"
     assert settings.log_level == "INFO"
+    assert settings.embedding_cache_directory == Path("data/huggingface")
 
 
 def test_settings_reject_unknown_environment() -> None:
