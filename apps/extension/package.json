@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test github_context.test.mjs snapshot_storage.test.mjs sidepanel.test.mjs service_worker.test.mjs"
+    "test": "node --test api_settings.test.mjs github_context.test.mjs snapshot_storage.test.mjs sidepanel.test.mjs service_worker.test.mjs"
   }
 }

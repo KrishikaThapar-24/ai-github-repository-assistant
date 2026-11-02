@@ -1,7 +1,7 @@
 import { parseGitHubRepository } from "./github_context.js";
 import { loadIndexedSnapshot, saveIndexedSnapshot, snapshotStorageKey } from "./snapshot_storage.js";
+import { loadApiSettings } from "./api_settings.js";
 
-const API_BASE = "http://127.0.0.1:8001/api/v1";
 const contextLabel = document.querySelector("#repository-context");
 const refInput = document.querySelector("#ref-input");
 const statusLabel = document.querySelector("#index-status");
@@ -15,6 +15,9 @@ const searchButton = document.querySelector("#search-button");
 const searchInput = document.querySelector("#search-input");
 const questionInput = document.querySelector("#question-input");
 const messages = document.querySelector("#messages");
+document.querySelector("#settings-button").addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
+});
 
 document.querySelectorAll("[data-prompt]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -127,9 +130,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const { apiOrigin, apiToken } = await loadApiSettings(chrome.storage);
+  const headers = { "Content-Type": "application/json", ...options.headers };
+  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+  const response = await fetch(`${apiOrigin}/api/v1${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers,
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.detail || `API request failed (${response.status}).`);
@@ -156,7 +162,7 @@ async function refreshBackendStatus() {
       : "Public repositories work without a token; private repositories need a read-only GitHub token in .env.";
     backendStatusLabel.textContent = `API ready. ${modelStatus} ${githubStatus}`;
   } catch (error) {
-    backendStatusLabel.textContent = `Can't reach the local API at 127.0.0.1:8001. Start it with uvicorn from the project root. ${explainError(error)}`;
+    backendStatusLabel.textContent = `Can't reach the configured assistant API. Check connection settings and confirm FastAPI is running. ${explainError(error)}`;
   }
 }
 

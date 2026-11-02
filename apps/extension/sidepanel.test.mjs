@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { snapshotStorageKey } from "./snapshot_storage.js";
+import { API_ORIGIN_KEY, API_TOKEN_KEY } from "./api_settings.js";
 
 let sidepanelInstance = 0;
 
@@ -40,9 +41,10 @@ class FakeElement {
   focus() {}
 }
 
-async function loadSidepanel({ url, sessionContext = null, respond }) {
+async function loadSidepanel({ url, sessionContext = null, apiOrigin, apiToken, respond }) {
   const selectors = [
     "#repository-context",
+    "#settings-button",
     "#ref-input",
     "#index-status",
     "#backend-status",
@@ -64,6 +66,9 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   });
   elements.set("#explain-file-button", explainFileButton);
   const storedValues = new Map();
+  const storedSessionValues = new Map();
+  if (apiOrigin) storedValues.set(API_ORIGIN_KEY, apiOrigin);
+  if (apiToken) storedSessionValues.set(API_TOKEN_KEY, apiToken);
   const requests = [];
   let lastTabQuery = null;
   let activeUrl = url;
@@ -83,9 +88,16 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
     storage: {
       session: {
         async get(key) {
-          return key === "activeRepositoryTab" && sessionContext
-            ? { activeRepositoryTab: sessionContext }
-            : {};
+          if (key === "activeRepositoryTab" && sessionContext) {
+            return { activeRepositoryTab: sessionContext };
+          }
+          return storedSessionValues.has(key) ? { [key]: storedSessionValues.get(key) } : {};
+        },
+        async set(entries) {
+          for (const [key, value] of Object.entries(entries)) storedSessionValues.set(key, value);
+        },
+        async remove(key) {
+          storedSessionValues.delete(key);
         },
       },
       local: {
@@ -114,13 +126,18 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
         },
       },
     },
+    runtime: { openOptionsPage() {} },
   };
   globalThis.fetch = async (requestUrl, options = {}) => {
+    const url = new URL(requestUrl);
     const request = {
-      path: requestUrl.replace("http://127.0.0.1:8001/api/v1", ""),
+      path: url.pathname.replace("/api/v1", ""),
       method: options.method ?? "GET",
       body: options.body ? JSON.parse(options.body) : null,
     };
+    if (options.headers?.Authorization) {
+      request.headers = { Authorization: options.headers.Authorization };
+    }
     requests.push(request);
     const payload = request.path === "/status"
       ? {
@@ -140,7 +157,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
   };
 
   let source = await readFile(new URL("./sidepanel.js", import.meta.url), "utf8");
-  for (const moduleName of ["github_context.js", "snapshot_storage.js"]) {
+  for (const moduleName of ["github_context.js", "snapshot_storage.js", "api_settings.js"]) {
     source = source.replaceAll(
       `"./${moduleName}"`,
       JSON.stringify(new URL(`./${moduleName}`, import.meta.url).href),
@@ -162,6 +179,7 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
     explainFileButton,
     requests,
     storedValues,
+    storedSessionValues,
     get lastTabQuery() {
       return lastTabQuery;
     },
@@ -182,6 +200,26 @@ async function loadSidepanel({ url, sessionContext = null, respond }) {
     },
   };
 }
+
+test("uses the configured HTTPS API and sends the session token only in the header", async () => {
+  const panel = await loadSidepanel({
+    url: "https://github.com/acme/shop",
+    apiOrigin: "https://assistant.example.com",
+    apiToken: "session-only-token",
+    respond: async () => ({ results: [] }),
+  });
+
+  try {
+    const statusRequest = panel.requests[0];
+    assert.equal(statusRequest.path, "/status");
+    assert.equal(statusRequest.headers.Authorization, "Bearer session-only-token");
+    assert.equal(panel.storedValues.get(API_ORIGIN_KEY), "https://assistant.example.com");
+    assert.equal(panel.storedValues.has(API_TOKEN_KEY), false);
+    assert.equal(panel.storedSessionValues.get(API_TOKEN_KEY), "session-only-token");
+  } finally {
+    panel.restore();
+  }
+});
 
 test("indexes the active repository and searches the matching snapshot with citations", async () => {
   const commitSha = "deadbeef1234567890";

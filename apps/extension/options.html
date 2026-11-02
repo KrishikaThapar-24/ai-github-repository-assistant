@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assistant connection settings</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <main class="settings-page">
+      <header>
+        <p class="eyebrow">AI DEVELOPER ASSISTANT</p>
+        <h1>Connection settings</h1>
+        <p class="muted">Choose the FastAPI backend used by the GitHub side panel.</p>
+      </header>
+      <form id="settings-form" class="card">
+        <label for="api-origin">API origin</label>
+        <input id="api-origin" type="url" autocomplete="url" required />
+        <p class="muted">Use HTTPS for remote backends. Local development defaults to http://127.0.0.1:8001.</p>
+        <label for="api-token">Bearer token (optional)</label>
+        <input id="api-token" type="password" autocomplete="off" placeholder="Stored for this browser session only" />
+        <label class="checkbox-label" for="clear-token">
+          <input id="clear-token" type="checkbox" /> Clear the saved session token
+        </label>
+        <button type="submit">Save connection</button>
+        <p id="settings-status" class="muted" aria-live="polite"></p>
+      </form>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

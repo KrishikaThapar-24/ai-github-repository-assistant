@@ -25,6 +25,6 @@ Keep the API token and provider key on the backend. Keep the demo password priva
 - Add request quotas and per-user access control.
 - Measure cold-start memory and indexing time on the chosen host.
 - Configure and verify separate frontend and API services.
-- Configure the Chrome extension with a secure remote API login flow; the extension currently targets the local API.
+- Test the Chrome extension against the deployed API, including the configured extension ID, host permission, and session-only bearer token.
 
 Sources: [Render free service limitations](https://render.com/docs/free), [Render compute plans](https://render.com/docs/blueprint-spec), and [Hugging Face Spaces overview](https://huggingface.co/docs/hub/spaces-overview).
