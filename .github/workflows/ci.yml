@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test Python and Chrome extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Install project and test dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Check formatting and lint
+        run: uv run ruff check src tests apps
+
+      - name: Run Python tests
+        run: uv run pytest -q
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Check extension JavaScript
+        run: |
+          node --check apps/extension/sidepanel.js
+          node --check apps/extension/snapshot_storage.js
+
+      - name: Run extension tests
+        run: node --test apps/extension/github_context.test.mjs apps/extension/snapshot_storage.test.mjs
