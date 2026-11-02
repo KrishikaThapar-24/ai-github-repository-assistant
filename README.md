@@ -19,7 +19,7 @@ $env:UV_CACHE_DIR = '.uv-cache'
 uv sync --extra dev --extra ai --extra ui
 uv run pytest -q
 uv run ruff check src tests apps
-node --test apps/extension/github_context.test.mjs apps/extension/snapshot_storage.test.mjs
+npm --prefix apps/extension test
 ```
 
 Copy `.env.example` to `.env`. For private repositories, set a fine-grained GitHub token with read-only Contents, Pull requests, and Issues permissions. Set the key for the provider selected by `DEV_ASSISTANT_LLM_PROVIDER`. Public repositories can be read without a GitHub token. All credentials stay in the backend environment, not the extension.

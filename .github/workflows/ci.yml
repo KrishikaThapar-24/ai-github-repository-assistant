@@ -53,6 +53,7 @@ jobs:
           node --check apps/extension/service_worker.js
           node --check apps/extension/sidepanel.js
           node --check apps/extension/snapshot_storage.js
+          node --check apps/extension/sidepanel.test.mjs
 
       - name: Run extension tests
-        run: node --test apps/extension/github_context.test.mjs apps/extension/snapshot_storage.test.mjs
+        run: npm --prefix apps/extension test

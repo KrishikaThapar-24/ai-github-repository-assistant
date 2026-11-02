@@ -1,5 +1,8 @@
 {
   "name": "ai-github-repository-assistant-extension",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "test": "node --test github_context.test.mjs snapshot_storage.test.mjs sidepanel.test.mjs"
+  }
 }
