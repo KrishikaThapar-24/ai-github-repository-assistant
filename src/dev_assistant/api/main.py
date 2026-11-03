@@ -16,7 +16,9 @@ extension_origins = (
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501", *extension_origins],
+    allow_origins=["http://localhost:8501", 
+                   "http://127.0.0.1:8501",
+                   "https://ai-app-repository-assistant-6t377znnmrbbi4bbfa9lvw.streamlit.app/", *extension_origins],
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )

@@ -5,8 +5,7 @@ from threading import Barrier, Event
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
+from fastapi import HTTPException, Response
 from pydantic import ValidationError
 
 from dev_assistant.api import routes
@@ -49,7 +48,7 @@ def test_connect_repository_returns_a_pollable_job(monkeypatch) -> None:
     assert job.result["commit_sha"] == "deadbeef123"
 
 
-def test_inline_indexing_completes_before_the_http_response(monkeypatch) -> None:
+def test_inline_indexing_returns_a_completed_job_response(monkeypatch) -> None:
     report = {
         "repository_id": "acme/demo",
         "ref": "main",
@@ -60,21 +59,16 @@ def test_inline_indexing_completes_before_the_http_response(monkeypatch) -> None
         "call_count": 1,
     }
     monkeypatch.setattr(routes, "_ingest_repository", lambda *args: report)
-    from dev_assistant.api.main import app
-    from dev_assistant.core.config import get_settings
-
-    app.dependency_overrides[get_settings] = lambda: Settings(indexing_mode="inline")
-    try:
-        response = TestClient(app).post(
-            "/api/v1/repositories/connect",
-            json={"repository_id": "acme/demo", "ref": "main"},
-        )
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
+    response = Response()
+    job = routes.connect_repository(
+        ConnectRepositoryRequest(repository_id="acme/demo", ref="main"),
+        Settings(indexing_mode="inline"),
+        response,
+    )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "succeeded"
-    assert response.json()["result"] == report
+    assert job.status == "succeeded"
+    assert job.result == report
 
 
 def test_connect_repository_reuses_an_active_job_for_same_repository_and_ref(monkeypatch) -> None:

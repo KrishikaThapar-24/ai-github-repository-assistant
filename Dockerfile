@@ -14,7 +14,7 @@ COPY apps ./apps
 RUN python -m pip install --upgrade pip \
     && python -m pip install ".[ai,parsers]"
 
-# Cloud Run injects PORT. Run one process: the current indexes and job status
+# Render injects PORT. Run one process: the current indexes and job status
 # are process-local and are not safe to split across multiple workers.
 RUN useradd --create-home --uid 10001 assistant \
     && mkdir -p /app/data/chroma /app/data \
