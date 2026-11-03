@@ -210,7 +210,7 @@ connectButton.addEventListener("click", async () => {
       method: "POST",
       body: JSON.stringify({ repository_id: repositoryId, ref }),
     });
-    const indexed = await waitForIndex(result.job_id);
+    const indexed = result.status === "succeeded" ? result.result : await waitForIndex(result.job_id);
     await saveIndexedSnapshot(chrome.storage.local, repositoryId, ref, indexed);
     if (activeSnapshotKey() === snapshotKey) {
       indexedCommit = indexed.commit_sha;

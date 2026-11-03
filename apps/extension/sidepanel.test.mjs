@@ -292,6 +292,47 @@ test("indexes the active repository and searches the matching snapshot with cita
   }
 });
 
+test("accepts a repository indexed inline by the API", async () => {
+  const commitSha = "cafebabefeed1234";
+  const panel = await loadSidepanel({
+    url: "https://github.com/acme/shop",
+    async respond(request) {
+      if (request.path === "/repositories/connect") {
+        return {
+          status: "succeeded",
+          result: {
+            commit_sha: commitSha,
+            file_count: 2,
+            chunk_count: 3,
+            dependency_count: 1,
+            call_count: 0,
+          },
+        };
+      }
+      throw new Error(`Unexpected API request: ${request.path}`);
+    },
+  });
+
+  try {
+    await panel.elements.get("#connect-button").dispatch("click");
+
+    assert.equal(
+      panel.elements.get("#index-status").textContent.includes("Indexed 2 files"),
+      true,
+    );
+    assert.equal(
+      panel.storedValues.get(snapshotStorageKey("acme/shop", "HEAD")).commitSha,
+      commitSha,
+    );
+    assert.equal(
+      panel.requests.some((request) => request.path.startsWith("/repositories/jobs/")),
+      false,
+    );
+  } finally {
+    panel.restore();
+  }
+});
+
 test("explains the active GitHub source file using its indexed repository context", async () => {
   const panel = await loadSidepanel({
     url: "https://github.com/acme/shop/blob/main/src/auth.py",
