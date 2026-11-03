@@ -1,0 +1,4 @@
+# Streamlit Community Cloud installs this file from the repository root.
+# The UI calls the separately deployed API, so it does not need model packages.
+httpx>=0.27,<1.0
+streamlit>=1.40,<2.0

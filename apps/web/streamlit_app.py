@@ -9,9 +9,29 @@ import time
 import httpx
 import streamlit as st
 
-API_URL = os.getenv("DEV_ASSISTANT_API_URL", "http://127.0.0.1:8001").rstrip("/")
-API_TOKEN = os.getenv("DEV_ASSISTANT_API_ACCESS_TOKEN", "")
-DEMO_PASSWORD = os.getenv("DEV_ASSISTANT_DEMO_ACCESS_PASSWORD", "")
+
+def _setting(name: str, default: str = "") -> str:
+    """Read hosted Streamlit secrets, with environment variables for local/dev use."""
+
+    try:
+        value = st.secrets.get(name)
+    except (FileNotFoundError, KeyError):
+        value = None
+    return str(value) if value is not None else os.getenv(name, default)
+
+
+def _show_index_result(result: dict[str, object]) -> None:
+    st.session_state["commit_sha"] = result["commit_sha"]
+    st.success(
+        f"Indexed {result['file_count']} files, {result['chunk_count']} code sections, "
+        f"{result['dependency_count']} imports, and {result['call_count']} cross-file calls."
+    )
+    st.code(str(result["commit_sha"])[:12])
+
+
+API_URL = _setting("DEV_ASSISTANT_API_URL", "http://127.0.0.1:8001").rstrip("/")
+API_TOKEN = _setting("DEV_ASSISTANT_API_ACCESS_TOKEN")
+DEMO_PASSWORD = _setting("DEV_ASSISTANT_DEMO_ACCESS_PASSWORD")
 IS_LOCAL_API = API_URL.startswith(("http://127.0.0.1", "http://localhost"))
 API_HEADERS = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 
@@ -48,12 +68,17 @@ with st.sidebar:
                 f"{API_URL}/api/v1/repositories/connect",
                 headers=API_HEADERS,
                 json={"repository_id": repository_id.strip(), "ref": ref.strip() or "HEAD"},
-                timeout=15,
+                timeout=1800,
             )
             response.raise_for_status()
-            st.session_state["index_job_id"] = response.json()["job_id"]
             st.session_state["repository_id"] = repository_id.strip()
             st.session_state.pop("commit_sha", None)
+            job = response.json()
+            if job["status"] == "succeeded":
+                st.session_state.pop("index_job_id", None)
+                _show_index_result(job["result"])
+            else:
+                st.session_state["index_job_id"] = job["job_id"]
         except httpx.HTTPError as exc:
             st.error(f"Could not start indexing: {exc}")
 
@@ -68,13 +93,7 @@ with st.sidebar:
             job_response.raise_for_status()
             job = job_response.json()
             if job["status"] == "succeeded":
-                result = job["result"]
-                st.session_state["commit_sha"] = result["commit_sha"]
-                st.success(
-                    f"Indexed {result['file_count']} files, {result['chunk_count']} code sections, "
-                    f"{result['dependency_count']} imports, and {result['call_count']} cross-file calls."
-                )
-                st.code(result["commit_sha"][:12])
+                _show_index_result(job["result"])
             elif job["status"] == "failed":
                 st.error(job["error"])
             else:

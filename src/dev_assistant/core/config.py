@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", pattern="^(development|test|production)$")
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
     llm_provider: Literal["openai", "anthropic"] = "openai"
+    indexing_mode: Literal["background", "inline"] = "background"
     llm_model: str | None = None
     llm_timeout_seconds: int = Field(default=60, ge=1, le=300)
     llm_max_retries: int = Field(default=2, ge=0, le=5)

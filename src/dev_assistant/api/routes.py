@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import asdict
+from datetime import UTC, datetime
 from threading import RLock
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from dev_assistant.api.schemas import (
     AskRequest,
@@ -110,8 +112,25 @@ def _ingest_repository(repository_id: str, ref: str, settings: Settings) -> dict
 def connect_repository(
     request: ConnectRepositoryRequest,
     settings: Settings = Depends(get_settings),
+    response: Response = None,
 ) -> JobResponse:
     """Start a read-only repository snapshot and indexing job."""
+
+    if settings.indexing_mode == "inline":
+        try:
+            result = _ingest_repository(request.repository_id, request.ref, settings)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if response is not None:
+            response.status_code = status.HTTP_200_OK
+        return JobResponse(
+            job_id=str(uuid.uuid4()),
+            status="succeeded",
+            created_at=datetime.now(UTC).isoformat(),
+            result=result,
+        )
 
     try:
         job = jobs.submit(
