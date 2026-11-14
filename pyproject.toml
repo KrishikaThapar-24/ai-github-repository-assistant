@@ -20,6 +20,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+providers = [
+    "langchain-anthropic>=1.0,<2.0",
+    "langchain-openai>=1.0,<2.0",
+]
 ai = [
     "langchain-anthropic>=1.0,<2.0",
     "langchain-huggingface>=1.0,<2.0",

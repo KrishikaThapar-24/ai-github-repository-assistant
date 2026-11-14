@@ -33,7 +33,7 @@ jobs:
           enable-cache: true
 
       - name: Install project and test dependencies
-        run: uv sync --locked --extra dev
+        run: uv sync --locked --extra dev --extra providers
 
       - name: Check formatting and lint
         run: uv run ruff check src tests apps
