@@ -88,7 +88,7 @@ with st.sidebar:
             job_response = httpx.get(
                 f"{API_URL}/api/v1/repositories/jobs/{job_id}",
                 headers=API_HEADERS,
-                timeout=10,
+                timeout=60,
             )
             job_response.raise_for_status()
             job = job_response.json()
@@ -100,6 +100,12 @@ with st.sidebar:
                 st.info(f"Indexing: {job['status']}")
                 time.sleep(1)
                 st.rerun()
+        except httpx.ReadTimeout:
+            st.warning(
+                "The API did not return the indexing status within 60 seconds. "
+                "The indexing job may still be running; wait a little and refresh this page "
+                "to check it again."
+            )
         except httpx.HTTPError as exc:
             st.error(f"Could not read indexing status: {exc}")
 
