@@ -94,8 +94,10 @@ with st.sidebar:
             job = job_response.json()
             if job["status"] == "succeeded":
                 _show_index_result(job["result"])
+                st.session_state.pop("index_job_id", None)
             elif job["status"] == "failed":
                 st.error(job["error"])
+                st.session_state.pop("index_job_id", None)
             else:
                 st.info(f"Indexing: {job['status']}")
                 time.sleep(1)
@@ -106,6 +108,15 @@ with st.sidebar:
                 "The indexing job may still be running; wait a little and refresh this page "
                 "to check it again."
             )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                st.session_state.pop("index_job_id", None)
+                st.warning(
+                    "Render no longer has this indexing job's status. The service may have "
+                    "restarted while indexing. Click Connect and index to start a fresh job."
+                )
+            else:
+                st.error(f"Could not read indexing status: {exc}")
         except httpx.HTTPError as exc:
             st.error(f"Could not read indexing status: {exc}")
 
