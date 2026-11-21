@@ -5,17 +5,23 @@ from dev_assistant.agents.graphs.code_qa import CodeQAGraph
 from dev_assistant.code_intel.dependencies import SQLiteDependencyIndex
 from dev_assistant.core.config import Settings
 from dev_assistant.github.factory import create_activity_client
-from dev_assistant.search.embeddings import HuggingFaceEmbeddingProvider
+from dev_assistant.search.embeddings import (
+    ChromaOnnxEmbeddingProvider,
+    HuggingFaceEmbeddingProvider,
+)
 from dev_assistant.search.lexical_index import SQLiteLexicalIndex
 from dev_assistant.search.service import CodeSearchService
 from dev_assistant.search.vector_store import ChromaCodeStore
 
 
 def create_search_service(settings: Settings) -> CodeSearchService:
-    embeddings = HuggingFaceEmbeddingProvider(
-        settings.embedding_model_name,
-        cache_folder=settings.embedding_cache_directory,
-    )
+    if settings.embedding_backend == "huggingface":
+        embeddings = HuggingFaceEmbeddingProvider(
+            settings.embedding_model_name,
+            cache_folder=settings.embedding_cache_directory,
+        )
+    else:
+        embeddings = ChromaOnnxEmbeddingProvider()
     return CodeSearchService(
         embeddings=embeddings,
         vectors=ChromaCodeStore(settings.chroma_persist_directory),

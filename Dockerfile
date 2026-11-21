@@ -7,12 +7,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install the project and the backend's optional model/parser dependencies.
+# Use Chroma's lightweight ONNX embeddings in the hosted container.
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY apps ./apps
 RUN python -m pip install --upgrade pip \
-    && python -m pip install ".[ai,parsers]"
+    && python -m pip install ".[providers,parsers]"
 
 # Render injects PORT. Run one process: the current indexes and job status
 # are process-local and are not safe to split across multiple workers.

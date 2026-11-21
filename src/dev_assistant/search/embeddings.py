@@ -1,4 +1,4 @@
-"""Embedding provider interface and HuggingFace implementation."""
+"""Embedding providers for local and hosted repository indexing."""
 
 from __future__ import annotations
 
@@ -40,3 +40,23 @@ class HuggingFaceEmbeddingProvider:
 
     def embed_query(self, text: str) -> list[float]:
         return self._embeddings.embed_query(text)
+
+
+class ChromaOnnxEmbeddingProvider:
+    """Use Chroma's small ONNX MiniLM model without loading PyTorch."""
+
+    def __init__(self) -> None:
+        try:
+            from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+        except (ImportError, AttributeError) as exc:
+            raise RuntimeError(
+                "The Chroma ONNX embedding provider is unavailable. "
+                "Install the project's base dependencies with `pip install .`."
+            ) from exc
+        self._embedding_function = ONNXMiniLM_L6_V2()
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[float(value) for value in vector] for vector in self._embedding_function(texts)]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_documents([text])[0]
