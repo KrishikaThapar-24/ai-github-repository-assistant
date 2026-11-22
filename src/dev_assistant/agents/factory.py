@@ -8,6 +8,7 @@ from dev_assistant.github.factory import create_activity_client
 from dev_assistant.search.embeddings import (
     ChromaOnnxEmbeddingProvider,
     HuggingFaceEmbeddingProvider,
+    OpenAIEmbeddingProvider,
 )
 from dev_assistant.search.lexical_index import SQLiteLexicalIndex
 from dev_assistant.search.service import CodeSearchService
@@ -19,6 +20,14 @@ def create_search_service(settings: Settings) -> CodeSearchService:
         embeddings = HuggingFaceEmbeddingProvider(
             settings.embedding_model_name,
             cache_folder=settings.embedding_cache_directory,
+        )
+    elif settings.embedding_backend == "openai":
+        if settings.openai_api_key is None:
+            raise RuntimeError(
+                "DEV_ASSISTANT_EMBEDDING_BACKEND=openai needs DEV_ASSISTANT_OPENAI_API_KEY."
+            )
+        embeddings = OpenAIEmbeddingProvider(
+            settings.openai_api_key.get_secret_value(), settings.openai_embedding_model
         )
     else:
         embeddings = ChromaOnnxEmbeddingProvider()

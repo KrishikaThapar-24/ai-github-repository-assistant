@@ -45,7 +45,8 @@ class Settings(BaseSettings):
     github_max_archive_bytes: int = Field(default=64 * 1024 * 1024, ge=1_000_000)
     github_max_pull_request_diff_bytes: int = Field(default=2 * 1024 * 1024, ge=16_384)
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_backend: Literal["chroma_onnx", "huggingface"] = "chroma_onnx"
+    embedding_backend: Literal["chroma_onnx", "huggingface", "openai"] = "chroma_onnx"
+    openai_embedding_model: str = "text-embedding-3-small"
     embedding_cache_directory: Path = Path("data/huggingface")
     chroma_persist_directory: Path = Path("data/chroma")
     lexical_database_path: Path = Path("data/code-search.sqlite3")
