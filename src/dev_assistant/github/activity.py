@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 import httpx
 
-from dev_assistant.github.source import GitHubSourceError
+from dev_assistant.github.source import GitHubSourceError, github_status_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -369,17 +369,11 @@ class GitHubActivityClient:
     def _raise_for_github(response: httpx.Response) -> None:
         if response.is_success:
             return
-        if response.status_code in {401, 403}:
-            raise GitHubSourceError(
-                "GitHub denied access. Check repository visibility and the token's read-only Contents, Issues, or Pull requests permission."
-            )
         if response.status_code == 404:
             raise GitHubSourceError(
                 "Repository was not found or the configured token cannot access it."
             )
-        raise GitHubSourceError(
-            f"GitHub returned HTTP {response.status_code} while reading activity."
-        )
+        raise github_status_error(response, "reading activity")
 
 
 def is_latest_pull_request_question(question: str) -> bool:

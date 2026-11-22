@@ -7,13 +7,16 @@ from typing import Literal
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# .../src/dev_assistant/core/config.py -> project root, so .env is found wherever the API starts.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
 
 class Settings(BaseSettings):
     """Runtime configuration; secrets are intentionally not given defaults."""
 
     model_config = SettingsConfigDict(
         env_prefix="DEV_ASSISTANT_",
-        env_file=".env",
+        env_file=(_PROJECT_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

@@ -118,3 +118,80 @@ def test_github_source_enforces_archive_source_limits() -> None:
     files = source._read_archive(archive)
 
     assert files == []
+
+
+def test_rate_limit_403_is_reported_as_rate_limit_not_permission_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403,
+            headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": "1893456000"},
+            json={"message": "API rate limit exceeded for 1.2.3.4."},
+        )
+
+    source = GitHubRepositorySource(
+        client_factory=lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(GitHubSourceError, match="rate limit reached.*resets at"):
+        source.load("acme/demo")
+
+
+def test_permission_403_includes_github_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"message": "Resource not accessible by token"})
+
+    source = GitHubRepositorySource(
+        token="t",
+        client_factory=lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(GitHubSourceError, match="denied access.*Resource not accessible"):
+        source.load("acme/demo")
+
+
+def test_invalid_token_is_dropped_and_public_repository_still_loads() -> None:
+    archive = make_archive({"acme-demo-main/src/app.py": "def run():\n    return 1\n"})
+    seen_auth: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_auth.append(request.headers.get("Authorization"))
+        if request.headers.get("Authorization"):
+            return httpx.Response(401, json={"message": "Bad credentials"})
+        if request.url.path == "/repos/acme/demo":
+            return httpx.Response(200, json={"default_branch": "main"})
+        if request.url.path.endswith("/commits/main"):
+            return httpx.Response(200, json={"sha": "deadbeef"})
+        return httpx.Response(200, content=archive)
+
+    source = GitHubRepositorySource(
+        token="expired-token",
+        client_factory=lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    snapshot = source.load("acme/demo")
+
+    assert snapshot.commit_sha == "deadbeef"
+    assert seen_auth[0] == "Bearer expired-token"
+    assert all(value is None for value in seen_auth[1:])
+
+
+def test_invalid_token_on_private_repo_reports_not_found() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401 if request.headers.get("Authorization") else 404)
+
+    source = GitHubRepositorySource(
+        token="expired-token",
+        client_factory=lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(GitHubSourceError, match="not found"):
+        source.load("acme/private")
+
+
+def test_clean_github_token_strips_quotes_and_whitespace() -> None:
+    from dev_assistant.github.source import clean_github_token
+
+    assert clean_github_token('  "ghp_abc" ') == "ghp_abc"
+    assert clean_github_token("") is None
+    assert clean_github_token("   ") is None
+    assert clean_github_token(None) is None

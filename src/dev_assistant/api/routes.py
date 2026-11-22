@@ -61,7 +61,9 @@ def get_service_status(settings: Settings = Depends(get_settings)) -> ServiceSta
         llm_provider=settings.llm_provider,
         llm_configured=llm_configured,
         github_activity_backend=settings.github_activity_backend,
-        github_token_configured=settings.github_token is not None,
+        github_token_configured=bool(
+            settings.github_token and settings.github_token.get_secret_value().strip()
+        ),
     )
 
 

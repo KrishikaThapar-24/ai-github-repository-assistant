@@ -3,11 +3,16 @@
 from dev_assistant.core.config import Settings
 from dev_assistant.github.activity import GitHubActivityClient
 from dev_assistant.github.mcp_client import DockerMCPToolInvoker, GitHubMCPActivityClient
-from dev_assistant.github.source import GitHubRepositorySource
+from dev_assistant.github.source import GitHubRepositorySource, clean_github_token
+
+
+def _github_token(settings: Settings) -> str | None:
+    raw = settings.github_token.get_secret_value() if settings.github_token else None
+    return clean_github_token(raw)
 
 
 def create_repository_source(settings: Settings) -> GitHubRepositorySource:
-    token = settings.github_token.get_secret_value() if settings.github_token else None
+    token = _github_token(settings)
     return GitHubRepositorySource(
         api_url=settings.github_api_url,
         token=token,
@@ -19,7 +24,7 @@ def create_repository_source(settings: Settings) -> GitHubRepositorySource:
 def create_activity_client(
     settings: Settings,
 ) -> GitHubActivityClient | GitHubMCPActivityClient:
-    token = settings.github_token.get_secret_value() if settings.github_token else None
+    token = _github_token(settings)
     if settings.github_activity_backend == "mcp":
         if token is None:
             raise RuntimeError(
@@ -44,7 +49,7 @@ def create_activity_client(
 def create_pull_request_review_client(settings: Settings) -> GitHubActivityClient:
     """Use the bounded read-only REST diff endpoint for pull request review input."""
 
-    token = settings.github_token.get_secret_value() if settings.github_token else None
+    token = _github_token(settings)
     return GitHubActivityClient(
         api_url=settings.github_api_url,
         token=token,
@@ -56,7 +61,7 @@ def create_pull_request_review_client(settings: Settings) -> GitHubActivityClien
 def create_issue_investigation_client(settings: Settings) -> GitHubActivityClient:
     """Create the read-only REST adapter used to load issue reports and comments."""
 
-    token = settings.github_token.get_secret_value() if settings.github_token else None
+    token = _github_token(settings)
     return GitHubActivityClient(
         api_url=settings.github_api_url,
         token=token,

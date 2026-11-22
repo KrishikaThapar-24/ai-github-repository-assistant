@@ -14,7 +14,7 @@ This runbook reflects the current demo deployment: Render API, Streamlit Communi
    - `DEV_ASSISTANT_DEMO_ACCESS_PASSWORD` (a different random secret)
    - The provider key, for example `DEV_ASSISTANT_OPENAI_API_KEY`
    - `DEV_ASSISTANT_CHROME_EXTENSION_ID` after loading the unpacked extension and reading its ID from `chrome://extensions`
-   - Leave `DEV_ASSISTANT_GITHUB_TOKEN` unset for a public demo that accepts arbitrary repositories. A server-side token could expose private repositories belonging to its owner. Add one only for a trusted/private deployment and grant read-only contents, pull requests, and issues access.
+   - Set `DEV_ASSISTANT_GITHUB_TOKEN` to a fine-grained token created with **Repository access: Public repositories (read-only)**. That token cannot see any private repository, so it is safe for a public demo, and it raises GitHub's limit from 60 to 5,000 requests per hour. Without a token, Render's shared outbound IPs quickly exhaust the unauthenticated limit and GitHub answers HTTP 403. Only grant private-repository access (read-only Contents, Pull requests, Issues) on a trusted/private deployment.
 4. Add secrets through Render's Environment page. Never put secrets in source control, Docker build arguments, or image layers.
 5. Verify `/health`, then `/api/v1/status` with the bearer token. `/health` is public and reveals only process health. Redeploy after setting the extension ID so FastAPI's CORS allowlist includes `chrome-extension://<extension-id>`.
 

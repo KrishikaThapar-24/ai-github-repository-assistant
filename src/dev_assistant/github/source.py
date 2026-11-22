@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import io
+import logging
 import tarfile
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from urllib.parse import quote, urljoin, urlparse
 
@@ -18,9 +20,80 @@ from dev_assistant.ingestion.source import (
     SPECIAL_LANGUAGES,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class GitHubSourceError(RuntimeError):
     """A user-facing failure while reading a GitHub repository."""
+
+
+def clean_github_token(raw: str | None) -> str | None:
+    """Normalize a configured token: trim spaces and stray quotes; empty means no token."""
+
+    if raw is None:
+        return None
+    cleaned = raw.strip().strip("\"'").strip()
+    return cleaned or None
+
+
+def github_status_error(response: httpx.Response, action: str) -> GitHubSourceError:
+    """Turn a failed GitHub response into a message that names the real cause.
+
+    GitHub uses 403 both for missing permissions and for exhausted rate limits, so the
+    status code alone is not enough to tell the user what to fix.
+    """
+
+    status_code = response.status_code
+    try:
+        response.read()
+        body = response.json()
+        github_message = str(body.get("message", "")) if isinstance(body, dict) else ""
+    except Exception:  # noqa: BLE001 - the body is only used to improve the message
+        github_message = ""
+
+    logger.warning(
+        "GitHub returned HTTP %s while %s: %s (rate limit remaining: %s)",
+        status_code,
+        action,
+        github_message or "no message",
+        response.headers.get("x-ratelimit-remaining"),
+    )
+
+    if status_code == 401:
+        return GitHubSourceError(
+            "GitHub rejected the configured token (invalid, expired, or revoked). "
+            "Create a new read-only token, or remove DEV_ASSISTANT_GITHUB_TOKEN to use "
+            "public repositories without one."
+        )
+
+    rate_limited = (
+        status_code == 429
+        or response.headers.get("x-ratelimit-remaining") == "0"
+        or "rate limit" in github_message.lower()
+    )
+    if rate_limited:
+        reset = response.headers.get("x-ratelimit-reset")
+        when = ""
+        if reset and reset.isdigit():
+            when = (
+                " It resets at "
+                + datetime.fromtimestamp(int(reset), tz=UTC).strftime("%H:%M UTC")
+                + "."
+            )
+        return GitHubSourceError(
+            "GitHub rate limit reached. Requests without a token share a small hourly limit; "
+            "set DEV_ASSISTANT_GITHUB_TOKEN on the API server to a fine-grained token with "
+            "'Public repositories (read-only)' access to raise it." + when
+        )
+
+    if status_code == 403:
+        detail = f" GitHub said: {github_message}" if github_message else ""
+        return GitHubSourceError(
+            "GitHub denied access (HTTP 403). The repository may be private or blocked, "
+            "or the token lacks read-only Contents, Issues, or Pull requests permission." + detail
+        )
+
+    return GitHubSourceError(f"GitHub returned HTTP {status_code} while {action}.")
 
 
 class GitHubRepositorySource:
@@ -63,6 +136,14 @@ class GitHubRepositorySource:
             repository_response = client.get(
                 f"{self.api_url}/repos/{owner}/{repository}", headers=headers
             )
+            if repository_response.status_code == 401 and "Authorization" in headers:
+                # A stale or malformed token breaks even public repositories. Retry once
+                # without credentials; private repositories will still report not found.
+                logger.warning("GitHub rejected the configured token; retrying without it.")
+                headers.pop("Authorization")
+                repository_response = client.get(
+                    f"{self.api_url}/repos/{owner}/{repository}", headers=headers
+                )
             self._raise_for_github(repository_response)
             repository_data = repository_response.json()
             resolved_ref = repository_data.get("default_branch") if ref == "HEAD" else ref
@@ -142,17 +223,11 @@ class GitHubRepositorySource:
     def _raise_for_github(response: httpx.Response) -> None:
         if response.is_success:
             return
-        if response.status_code == 401 or response.status_code == 403:
-            raise GitHubSourceError(
-                "GitHub denied access. Check repository visibility and the token's read-only contents permission."
-            )
         if response.status_code == 404:
             raise GitHubSourceError(
                 "Repository or ref was not found, or the configured token cannot access it."
             )
-        raise GitHubSourceError(
-            f"GitHub returned HTTP {response.status_code} while reading the repository."
-        )
+        raise github_status_error(response, "reading the repository")
 
     def _read_archive(self, archive_bytes: bytes) -> list[SourceFile]:
         files: list[SourceFile] = []
