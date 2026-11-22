@@ -167,6 +167,7 @@ class GitHubRepositorySource:
             archive = self._download_archive(client, archive_url, headers)
 
         files = self._read_archive(archive)
+        del archive  # release the compressed download before chunking and embedding
         return RepositorySnapshot(repository_id, resolved_ref, commit_sha, tuple(files))
 
     @staticmethod

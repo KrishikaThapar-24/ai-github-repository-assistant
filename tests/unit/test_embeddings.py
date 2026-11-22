@@ -46,3 +46,23 @@ def test_chroma_onnx_provider_returns_plain_float_vectors(monkeypatch) -> None:
 
     assert provider.embed_documents(["one", "two"]) == [[1.0, 2.0], [1.0, 2.0]]
     assert provider.embed_query("query") == [1.0, 2.0]
+
+
+def test_chroma_onnx_provider_embeds_in_small_slices_and_keeps_order() -> None:
+    from dev_assistant.search.embeddings import ChromaOnnxEmbeddingProvider
+
+    calls: list[int] = []
+
+    def fake_embedding_function(texts: list[str]) -> list[list[float]]:
+        calls.append(len(texts))
+        return [[float(len(text))] for text in texts]
+
+    provider = ChromaOnnxEmbeddingProvider.__new__(ChromaOnnxEmbeddingProvider)
+    provider._embedding_function = fake_embedding_function
+
+    texts = ["a" * size for size in range(1, 21)]
+    vectors = provider.embed_documents(texts)
+
+    assert calls == [8, 8, 4]
+    assert vectors == [[float(size)] for size in range(1, 21)]
+    assert provider.embed_query("abc") == [3.0]

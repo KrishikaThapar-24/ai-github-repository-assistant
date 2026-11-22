@@ -115,6 +115,15 @@ with st.sidebar:
                     "Render no longer has this indexing job's status. The service may have "
                     "restarted while indexing. Click Connect and index to start a fresh job."
                 )
+            elif exc.response.status_code in (502, 503, 504):
+                st.session_state.pop("index_job_id", None)
+                st.error(
+                    "The API server stopped responding (HTTP "
+                    f"{exc.response.status_code}). It is probably restarting, waking up, or "
+                    "ran out of memory while indexing. Wait a minute, then click Connect and "
+                    "index again. If it keeps happening, open the API service's Logs page "
+                    "on Render and look for an out-of-memory message."
+                )
             else:
                 st.error(f"Could not read indexing status: {exc}")
         except httpx.HTTPError as exc:

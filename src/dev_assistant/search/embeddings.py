@@ -55,8 +55,16 @@ class ChromaOnnxEmbeddingProvider:
             ) from exc
         self._embedding_function = ONNXMiniLM_L6_V2()
 
+    # Chroma runs 32 texts through the model at once by default. Small slices keep the
+    # transient memory low enough for 512 MB hosts at a small speed cost.
+    _SLICE_SIZE = 8
+
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [[float(value) for value in vector] for vector in self._embedding_function(texts)]
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), self._SLICE_SIZE):
+            for vector in self._embedding_function(texts[start : start + self._SLICE_SIZE]):
+                vectors.append([float(value) for value in vector])
+        return vectors
 
     def embed_query(self, text: str) -> list[float]:
         return self.embed_documents([text])[0]
